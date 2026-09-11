@@ -1,0 +1,270 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-border: #2a2e38;
+  --text: #e6e8ec;
+  --muted: #8b93a3;
+  --accent: #3b82f6;
+  --odds-bg: #1c2b4a;
+  --odds-border: #3b6bc9;
+  --risk-low: #22c55e;
+  --risk-mid: #eab308;
+  --risk-high: #ef4444;
+  --alert-strong: #ef4444;
+  --alert-interesting: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.synthetic-banner {
+  background: #4a2f13;
+  border: 1px solid #8a5a1f;
+  color: #ffd699;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.controls label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.risk-slider {
+  width: 160px;
+}
+
+.refresh-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover {
+  background: #1d212b;
+}
+
+.risk-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f1115;
+}
+
+.odds-cell {
+  background: var(--odds-bg);
+  border: 1px solid var(--odds-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.odds-source {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.alert-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+}
+
+.value-positive {
+  color: var(--risk-low);
+}
+
+.value-negative {
+  color: var(--muted);
+}
+
+.risk-input-small {
+  width: 42px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.betslip {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 16px;
+  position: sticky;
+  top: 20px;
+}
+
+.betslip h2 {
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+
+.betslip-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 12px;
+}
+
+.betslip-item:last-of-type {
+  border-bottom: none;
+}
+
+.betslip-item .match-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.betslip-total {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+}
+
+.popover {
+  position: absolute;
+  z-index: 20;
+  background: #1c1f27;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 14px;
+  width: 320px;
+  font-size: 12px;
+  line-height: 1.5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.popover-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.link-back {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.detail-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+}
