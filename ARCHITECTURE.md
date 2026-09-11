@@ -105,21 +105,26 @@ backend/
   alembic/            # migrazioni
   tests/              # pytest, dati sintetici etichettati esplicitamente
   scripts/
-    seed_dev_fixture.py   # dati SINTETICI per smoke-test locale (mai per analisi reale)
+    seed_dev_fixture.py     # dati SINTETICI per smoke-test locale (mai per analisi reale)
+    ingest_football_data.py # ingestione REALE bulk da football-data.co.uk (multi-stagione)
 frontend/
   app/                # Next.js App Router: tabella, dettaglio partita, schedina
 ```
 
-## Limite di questa sessione di sviluppo (importante)
+## Nota storica sull'accesso di rete durante lo sviluppo
 
-L'ambiente sandbox in cui questo progetto è stato inizialmente sviluppato blocca
-l'accesso di rete in uscita verso l'internet generico (proxy con allowlist limitata
-a registri pacchetti npm/PyPI e all'API Anthropic) — verificato empiricamente
-(`curl` verso football-data.co.uk rifiutato dal proxy con 403). Questo significa
-che, in questa sessione, **non è stato possibile eseguire l'ingestione reale**
-contro football-data.co.uk/API-Football/understat/fbref per popolare il database
-con dati reali. Il codice dei provider è scritto per funzionare in un ambiente con
-accesso a internet normale (locale, CI, produzione); qui è stato verificato solo
-con dati sintetici chiaramente etichettati (v. `scripts/seed_dev_fixture.py` e
-`tests/fixtures/`). Prima di un uso reale, eseguire l'ingestione da un ambiente
-con accesso di rete normale e verificare manualmente il primo lotto di dati.
+L'ambiente sandbox in cui questo progetto è stato inizialmente sviluppato
+bloccava l'accesso di rete in uscita verso l'internet generico (proxy con
+allowlist limitata a registri pacchetti npm/PyPI e all'API Anthropic) — la
+prima ingestione è stata quindi verificata solo con dati sintetici
+(`scripts/seed_dev_fixture.py`). A metà sviluppo la policy di rete
+dell'ambiente è stata cambiata dall'utente, e da quel momento è stato
+verificato un accesso reale a football-data.co.uk: sono state ingerite 7.600
+partite reali (10 stagioni Premier League + 10 stagioni Serie A, 2015/16–
+2024/25) tramite `scripts/ingest_football_data.py`, e sull'ingestione reale
+sono stati eseguiti con successo l'analisi (`run_analysis_for_match`), un
+backtest walk-forward reale (v. BACKTEST_SPEC.md) e verifiche end-to-end di
+API e frontend. Le altre fonti (API-Football, understat, fbref) restano
+verificate solo strutturalmente (codice + test unitari), non con una vera
+ingestione in questa sessione — v. DATA_SOURCES.md per lo stato preciso di
+ciascuna.

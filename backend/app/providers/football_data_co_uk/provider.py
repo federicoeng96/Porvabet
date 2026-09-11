@@ -8,20 +8,28 @@ match results and bookmaker closing odds at:
 where <season> is a 4-digit code (e.g. "2425" = 2024/25) and <div> is the
 competition code ("E0" = English Premier League, "I1" = Italian Serie A).
 
-Column layout (verified against the site's own notes.txt — see DATA_SOURCES.md):
+Column layout (verified directly against the live https://www.football-data.co.uk/notes.txt
+and a real downloaded 2024/25 Premier League file — see DATA_SOURCES.md):
 Div, Date, Time, HomeTeam, AwayTeam, FTHG, FTAG, FTR, HTHG, HTAG, HTR, Referee,
 HS, AS, HST, AST, HC, AC, HF, AF, HY, AY, HR, AR, plus a variable set of
 per-bookmaker 1X2 odds columns (e.g. B365H/D/A, PSH/PSD/PSA) and Over/Under 2.5
-columns (e.g. B365>2.5/B365<2.5). The exact bookmaker panel varies by season, so
-this provider discovers odds columns generically instead of hardcoding a fixed
-bookmaker list (see `_extract_1x2_odds` / `_extract_ou25_odds`).
+columns (e.g. B365>2.5/B365<2.5).
 
-This provider performs a real, synchronous HTTP GET — it is not a mock. It has not
-been exercised against the live site from within the current sandboxed development
-session (outbound network there is restricted to package registries), so before
-relying on it in production, run `scripts/ingest_football_data.py` once from an
-environment with normal internet access and confirm the row/column counts look
-sane for the season you requested.
+Crucially, the site publishes **two** snapshots per bookmaker: the plain column
+(e.g. `B365H`) is a **pre-closing** quote (collected Fri/Tue afternoon per the
+site's own notes), while the same prefix with a "C" inserted before the H/D/A
+(or before the >/< for totals) — e.g. `B365CH`, `PC>2.5` — is the true **closing**
+quote. This provider surfaces both, under bookmaker keys `"<Name>"` (pre-closing)
+and `"<Name> (closing)"`, so callers that want the closing line (the standard,
+more efficient benchmark for backtesting — see BACKTEST_SPEC.md) can select it
+explicitly instead of silently getting pre-closing data.
+
+The exact bookmaker panel varies by season, so this provider discovers odds
+columns generically against a known prefix→name table instead of assuming a
+fixed panel (see `_extract_1x2_odds` / `_extract_ou25_odds`).
+
+This provider has been verified with a real HTTP GET against the live site
+(2024/25 Premier League file, 380 rows, matching this exact column layout).
 """
 
 import io
@@ -155,26 +163,60 @@ def _parse_kickoff(date_value: object, time_value: object) -> datetime:
 
 # Odds columns are prefixed by a per-bookmaker code and suffixed H/D/A for 1X2
 # (e.g. "B365H", "B365D", "B365A") or by ">2.5"/"<2.5" for the Over/Under 2.5
-# market (e.g. "B365>2.5", "B365<2.5"). We discover whichever bookmakers are
-# actually present in a given file rather than assuming a fixed panel, since the
-# bookmaker panel has changed across seasons.
+# market (e.g. "B365>2.5", "B365<2.5"). Table verified against the live
+# notes.txt (2026) — includes both currently-used and legacy (pre-2020ish)
+# bookmaker codes, since older season files still carry the latter.
 _KNOWN_BOOKMAKER_PREFIXES = {
+    "1XB": "1XBet",
     "B365": "Bet365",
+    "BF": "Betfair",
+    "BFD": "Betfred",
+    "BMGM": "BetMGM",
+    "BV": "BetVictor",
+    "BS": "Blue Square",
     "BW": "Bet&Win",
+    "CL": "Coral",
+    "GB": "Gamebookers",
     "IW": "Interwetten",
-    "PS": "Pinnacle",
-    "P": "Pinnacle",
-    "WH": "William Hill",
-    "VC": "VC Bet",
     "LB": "Ladbrokes",
+    "PP": "Paddy Power",
+    "PS": "Pinnacle",
+    "P": "Pinnacle",  # O/U totals (and some older 1X2 files) use "P" not "PS"
+    "SK": "Skybet",
+    "SO": "Sporting Odds",
+    "SB": "Sportingbet",
+    "SJ": "Stan James",
+    "SY": "Stanleybet",
+    "VC": "VC Bet",
+    "WH": "William Hill",
     "Max": "Market Max",
     "Avg": "Market Average",
+    "BFE": "Betfair Exchange",
+}
+
+# Same bookmakers, but the "C" (closing) column variant — e.g. "B365CH" instead
+# of "B365H", "PC>2.5" instead of "P>2.5". Kept as a separate table (rather than
+# derived by string-inserting "C" into the prefixes above) because the closing
+# variant isn't always just "<prefix>C" for every prefix (e.g. Pinnacle O/U
+# closing is "PC", derived from "P", not from "PS").
+_KNOWN_CLOSING_BOOKMAKER_PREFIXES = {
+    "1XBC": "1XBet (closing)",
+    "B365C": "Bet365 (closing)",
+    "BFC": "Betfair (closing)",
+    "BFDC": "Betfred (closing)",
+    "BWC": "Bet&Win (closing)",
+    "PSC": "Pinnacle (closing)",
+    "PC": "Pinnacle (closing)",
+    "WHC": "William Hill (closing)",
+    "MaxC": "Market Max (closing)",
+    "AvgC": "Market Average (closing)",
+    "BFEC": "Betfair Exchange (closing)",
 }
 
 
 def _extract_1x2_odds(row: pd.Series) -> dict[str, dict[str, float]]:
     result: dict[str, dict[str, float]] = {}
-    for prefix, name in _KNOWN_BOOKMAKER_PREFIXES.items():
+    for prefix, name in {**_KNOWN_BOOKMAKER_PREFIXES, **_KNOWN_CLOSING_BOOKMAKER_PREFIXES}.items():
         h, d, a = f"{prefix}H", f"{prefix}D", f"{prefix}A"
         if h in row.index and d in row.index and a in row.index:
             h_val, d_val, a_val = _safe_int_odds(row[h]), _safe_int_odds(row[d]), _safe_int_odds(row[a])
@@ -185,7 +227,7 @@ def _extract_1x2_odds(row: pd.Series) -> dict[str, dict[str, float]]:
 
 def _extract_ou25_odds(row: pd.Series) -> dict[str, dict[str, float]]:
     result: dict[str, dict[str, float]] = {}
-    for prefix, name in _KNOWN_BOOKMAKER_PREFIXES.items():
+    for prefix, name in {**_KNOWN_BOOKMAKER_PREFIXES, **_KNOWN_CLOSING_BOOKMAKER_PREFIXES}.items():
         over_col, under_col = f"{prefix}>2.5", f"{prefix}<2.5"
         if over_col in row.index and under_col in row.index:
             over_val, under_val = _safe_int_odds(row[over_col]), _safe_int_odds(row[under_col])

@@ -40,6 +40,14 @@ def test_parse_csv_extracts_results_and_generic_bookmaker_odds():
     assert first.closing_odds_1x2["Market Average"] == {"H": 1.92, "D": 3.58, "A": 4.15}
     assert first.closing_odds_over_under_2_5["Bet365"] == {"OVER": 1.85, "UNDER": 1.95}
 
+    # True closing-line columns ("B365CH", "PC>2.5", ...) are surfaced under a
+    # separate "(closing)" bookmaker key, never conflated with the pre-closing
+    # quote under the same bookmaker name.
+    assert first.closing_odds_1x2["Bet365 (closing)"] == {"H": 1.88, "D": 3.65, "A": 4.10}
+    assert first.closing_odds_1x2["Pinnacle (closing)"] == {"H": 1.93, "D": 3.50, "A": 4.05}
+    assert first.closing_odds_over_under_2_5["Bet365 (closing)"] == {"OVER": 1.83, "UNDER": 1.97}
+    assert first.closing_odds_over_under_2_5["Pinnacle (closing)"] == {"OVER": 1.86, "UNDER": 1.94}
+
 
 def test_parse_csv_handles_kickoff_datetime():
     provider = FootballDataCoUkProvider()

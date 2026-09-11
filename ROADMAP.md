@@ -24,27 +24,39 @@ riflette cosa è già fatto e cosa manca davvero).
    alert.
 8. ✅ Test automatici (38, tutti su dati sintetici chiaramente etichettati) +
    lint pulito.
+9. ✅ **Ingestione reale**: 7.600 partite reali (10 stagioni EPL + 10 Serie A,
+   2015/16–2024/25) da football-data.co.uk via `scripts/ingest_football_data.py`,
+   con correzione del parser per distinguere quote pre-chiusura da chiusura vera
+   (scoperta verificando lo schema colonne reale, non ipotizzato).
+10. ✅ **Backtest walk-forward su dati reali** (EPL + Serie A, 2019/20–2024/25):
+    risultati completi in `BACKTEST_SPEC.md` — proprietà di ranking del rischio
+    confermata (hit rate 60%→20% dal Risk 1 al 10), ROI onestamente negativo con
+    il modello attuale, calibrazione buona nelle fasce centrali ma overconfident
+    nelle code alte.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
-### 1. Ingestione reale (bloccante per tutto il resto)
-Eseguire `FootballDataCoUkProvider` da un ambiente con accesso di rete normale
-contro le stagioni storiche reali di Premier League e Serie A, verificare
-manualmente il primo lotto (conteggio righe, spot-check quote), poi scrivere
-uno script di ingestione bulk analogo a `scripts/seed_dev_fixture.py` ma contro
-dati reali (`scripts/ingest_football_data.py`, da creare).
+### 1. Persistere i risultati di backtest
+Il backtest reale (punto 10 sopra) è stato eseguito con uno script ad-hoc e i
+risultati riportati manualmente in BACKTEST_SPEC.md — manca ancora il codice
+che aggrega l'output di `run_walk_forward_backtest` con
+`app/backtest/metrics.py` e lo scrive in una riga `Backtest` (tabella già nello
+schema). Necessario prima di poter collegare `model_reliability` reale (da
+backtest, non valore neutro) nell'endpoint di analisi live.
 
-### 2. Persistere i risultati di backtest
-Oggi `run_walk_forward_backtest` produce predizioni in memoria; manca il
-codice che le aggrega con `app/backtest/metrics.py` e scrive una riga
-`Backtest` (tabella già nello schema). Necessario prima di poter collegare
-`model_reliability` reale (da backtest, non valore neutro) nell'endpoint di
-analisi live.
+### 2. Ricalibrare il refit più frequente su tutte le stagioni
+Il backtest reale eseguito usa `refit_batch_days=21` su 6 stagioni per
+restare in tempi ragionevoli in questa sessione; un run con la finestra di
+refit di default (7 giorni) su tutte le 10 stagioni disponibili darebbe una
+stima leggermente più precisa. Richiede solo tempo di calcolo (nessun limite
+tecnico), da eseguire su un ambiente con più tempo/risorse a disposizione.
 
-### 3. Calibrazione dei pesi/soglie
-`risk_score.WEIGHTS`, `value.ALERT_THRESHOLD_*`, `dixon_coles.xi` sono tutti
-punti di partenza espliciti — da ricalibrare sul backtest reale (punto 1+2),
-non prima.
+### 3. Calibrazione dei pesi/soglie/probabilità
+Il backtest reale mostra overconfidence nelle probabilità alte (bin 0.9-1.0:
+predetto 92.6%, osservato 71.4%) — una calibrazione post-hoc (Platt
+scaling/isotonic regression) applicata dopo `fair_odds()` la correggerebbe.
+`risk_score.WEIGHTS` e `value.ALERT_THRESHOLD_*` restano punti di partenza
+espliciti, ora con un backtest reale (punto 10 sopra) su cui ricalibrarli.
 
 ### 4. Corner, cartellini, falli (mercati team)
 Richiede: (a) dati storici corner/cartellini per partita (già nel data model,
@@ -76,9 +88,9 @@ individuale condizionato al minutaggio. Vedi MODEL_SPEC.md per la motivazione
 di un modello dedicato invece di riusare Dixon-Coles per singolo giocatore.
 
 ### 8. Serie A
-Il codice è già competition-agnostic (`competition_code` come parametro
-ovunque) — aggiungere Serie A è principalmente un problema di ingestione dati
-(football-data.co.uk copre già `I1`), non di riscrittura del motore.
+✅ Già ingerita e analizzata insieme a Premier League (v. punti 9-10 sopra) —
+il codice era già competition-agnostic (`competition_code` come parametro
+ovunque), quindi non ha richiesto alcuna modifica al motore.
 
 ### 9. Live Engine (solo architettura, non implementazione — come richiesto)
 Vedi la sezione dedicata in `ARCHITECTURE.md`: `Match.status` include già

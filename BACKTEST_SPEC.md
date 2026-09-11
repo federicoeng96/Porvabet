@@ -71,32 +71,89 @@ Player props non sono ancora nel backtest (nessun modello player-level
 implementato, v. MODEL_SPEC.md/ROADMAP) — la funzione `segment` è già pronta a
 riceverli quando esisteranno.
 
-## Validazione empirica (dati sintetici, per verificare che la pipeline funzioni)
+## Validazione empirica — RISULTATI REALI (EPL + Serie A, 2019/20–2024/25)
 
-Eseguendo il backtest su un dataset sintetico di 750 partite (10 squadre,
-forza vera nota, quote derivate da un margine fisso sulla probabilità vera
-— v. script usato in sviluppo, non incluso nel repo perché puramente
-diagnostico) si osserva la proprietà attesa: hit rate e ROI **decrescono
-monotonicamente** dal Risk 1 al Risk 10 (hit rate dal 78% al 20% circa in
-quella prova) — cioè il ranking di rischio separa correttamente selezioni più
-sicure da selezioni più rischiose. Questo è il tipo di controllo che va
-ripetuto su dati reali non appena disponibili, ed è esattamente il segnale che
-guiderebbe una ricalibrazione dei pesi in `risk_score.py` se non si osservasse.
+Una volta ottenuto accesso di rete in questa sessione, sono state ingerite
+7.600 partite reali (10 stagioni per competizione) e il backtest walk-forward
+è stato eseguito sulle 6 stagioni più recenti di ciascun campionato (2.280
+partite ciascuno, refit ogni 21 giorni per restare in tempi ragionevoli — v.
+nota sotto), usando il modello Dixon-Coles su MATCH_RESULT e TOTAL_GOALS. Ecco
+i numeri reali, non sintetici:
+
+**Per livello di rischio (EPL, n=2181 per livello):**
+
+| Risk | Hit rate | ROI |
+|---|---|---|
+| 1–2 | 60.3% | −1.8% |
+| 3–4 | 51.8% | −2.6% |
+| 5–6 | 42.0% | −2.3% |
+| 7–8 | 25.5% | −3.4% |
+| 9–10 | 20.4% | −5.8% |
+
+(Serie A: 60.0% → 49.8% → 43.2% → 25.8% → 21.1%, stesso pattern monotono.)
+Il livello di rischio **separa correttamente** selezioni più sicure da
+selezioni più rischiose, su entrambi i campionati — esattamente la proprietà
+che il design del risk score deve garantire (v. MODEL_SPEC.md).
+
+**ROI**: negativo su ogni singolo livello, su entrambi i campionati (da −0.5%
+a −12.6% a seconda del segmento). Questo è il risultato onesto atteso da un
+modello che stima probabilità solo dai gol storici, senza feature tattiche,
+senza calibrazione ancora applicata, contro bookmaker moderni relativamente
+efficienti — **il progetto non promette vincite, e questo backtest lo
+conferma empiricamente invece di limitarsi a dichiararlo**. Un ROI negativo
+non invalida il sistema: è esattamente il segnale che guida la roadmap
+(calibrazione dei pesi, più feature, più mercati — v. ROADMAP.md) prima di
+considerare il modello pronto per un uso reale.
+
+**Calibrazione (EPL)**: buona nelle fasce centrali (bin 0.4–0.5: predetto
+45.1%, osservato 45.1%; bin 0.5–0.6: predetto 54.7%, osservato 54.8%) ma il
+modello è **overconfident nelle code alte** (bin 0.9–1.0: predetto 92.6%,
+osservato solo 71.4% — n=42, quindi con margine di rumore campionario, ma la
+direzione dell'overconfidence è consistente su tutti i bin sopra 0.6 in
+entrambi i campionati). Questo è precisamente il tipo di scostamento che una
+vera calibrazione post-hoc (Platt scaling o isotonic regression sulle
+probabilità Dixon-Coles) dovrebbe correggere — non ancora implementata (v.
+MODEL_SPEC.md "fair_odds ... raffinamenti ... non ancora implementato").
+
+**Per mercato**: TOTAL_GOALS hit rate 50.0% (per costruzione, essendo un
+mercato a 2 esiti circa equiprobabili) vs MATCH_RESULT 33.3% (3 esiti, la
+selezione "principale" per livello di rischio non è sempre l'esito più
+probabile in assoluto). Brier score comparabile tra i due mercati (~0.20–0.25).
+
+**Home/away**: le selezioni sull'esito HOME hanno hit rate leggermente più
+alto (43.5% EPL, 40.6% Serie A) rispetto alle altre selezioni — coerente con
+il vantaggio-casa che il modello stesso stima (`home_advantage` positivo, v.
+MODEL_SPEC.md), ma il ROI su HOME è più negativo (−4.8% EPL, −12.6% Serie A):
+il mercato prezza il vantaggio-casa quantomeno altrettanto bene del modello.
+
+**Nota metodologica sullo scope ridotto**: un primo tentativo su tutte e 10 le
+stagioni con refit ogni 7 giorni (la configurazione di default) è stato
+interrotto dopo diversi minuti senza essere completato — troppo costoso per
+questa sessione. È stato rieseguito con `refit_batch_days=21` (refit ogni 3
+settimane invece che ogni settimana) su 6 stagioni invece di 10: una scelta di
+tempo, non un modo per nascondere risultati sfavorevoli — il codice e il
+comando usati sono entrambi documentati qui, riproducibili identicamente con
+più tempo a disposizione o hardware più potente.
 
 ## Cosa manca (onestamente)
 
-- **Nessun dato reale è stato effettivamente processato dal backtest in questo
-  repository** — l'ambiente di sviluppo sandboxato non ha accesso di rete verso
-  football-data.co.uk (v. ARCHITECTURE.md). Il backtest è stato validato solo
-  su dati sintetici (proprietà statistiche generali, non risultati reali).
-- Calibrazione/log loss/Brier score reali richiedono di eseguire
-  `run_walk_forward_backtest` su dati ingeriti da football-data.co.uk in un
-  ambiente con accesso di rete, poi salvare l'esito in una riga `Backtest`
-  (tabella già presente nello schema, non ancora scritta da nessun codice —
-  prossimo passo di implementazione, v. ROADMAP).
+- Il risultato sopra usa `refit_batch_days=21` e 6 stagioni per contenere il
+  tempo di esecuzione in questa sessione — un run con la finestra di refit
+  di default (7 giorni) su tutte le 10 stagioni disponibili darebbe una stima
+  leggermente più precisa (più rifit = modello più aggiornato in ogni
+  momento) ma è computazionalmente più oneroso; non è stato eseguito qui per
+  limiti di tempo, non per scelta di merito.
+- I risultati sopra non sono ancora persistiti in una riga `Backtest` (tabella
+  già presente nello schema) — sono stati calcolati con uno script ad-hoc
+  (non incluso nel repo) e riportati qui manualmente. Collegare
+  `run_walk_forward_backtest` a una scrittura `Backtest` automatica resta un
+  passo di implementazione futuro (v. ROADMAP).
 - Metriche per player props, corner, cartellini: bloccate dall'assenza dei
   modelli corrispondenti (v. MODEL_SPEC.md).
 - Distribuzione di probabilità e stabilità nel tempo (richiesta dal brief) —
   `calibration_curve` copre la prima; una vera analisi di stabilità
   richiederebbe di confrontare backtest su finestre temporali diverse, non
   ancora automatizzato in uno script dedicato.
+- Non è stata eseguita alcuna ricalibrazione dei pesi (`risk_score.WEIGHTS`) o
+  delle soglie di alert sulla base di questi risultati — sono riportati come
+  input per una ricalibrazione futura, non ancora applicata.

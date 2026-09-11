@@ -30,7 +30,19 @@ from app.providers.base.dto import HistoricalMatchRecord
 
 MIN_TRAINING_MATCHES = 80
 REFIT_BATCH_DAYS = 7
-BOOKMAKER_PREFERENCE = ["Pinnacle", "Market Average", "Bet365"]
+# Prefer true closing lines (see football_data_co_uk/provider.py) over
+# pre-closing quotes: the closing line is the standard, more efficient
+# benchmark for backtesting (closest the market gets to "correct" before
+# kickoff). Pinnacle is preferred among bookmakers for its historically low
+# margins/sharp pricing; Market Average as the next-best broad consensus.
+BOOKMAKER_PREFERENCE = [
+    "Pinnacle (closing)",
+    "Market Average (closing)",
+    "Bet365 (closing)",
+    "Pinnacle",
+    "Market Average",
+    "Bet365",
+]
 
 
 @dataclass(frozen=True)

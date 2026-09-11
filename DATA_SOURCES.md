@@ -8,6 +8,15 @@ ARCHITECTURE.md) e non per assunzione. Dove la verifica è stata solo parziale
 segnalato esplicitamente come "confidenza media/bassa — da riverificare" invece
 di essere presentato come fatto accertato.
 
+**Aggiornamento**: a metà sviluppo l'ambiente sandbox ha ricevuto accesso di rete
+reale (la policy dell'ambiente è stata cambiata dall'utente). Da quel momento,
+football-data.co.uk è stato verificato con un fetch HTTP diretto (non solo
+tramite WebFetch/ricerca) e usato per un'ingestione reale di 7.600 partite
+(10 stagioni Premier League + 10 stagioni Serie A, 2015/16–2024/25) — la sezione
+dedicata sotto è stata aggiornata di conseguenza. Le altre fonti non ancora
+implementate/verificate restano come descritte (nessuna verifica aggiuntiva
+effettuata per loro in questa sessione).
+
 Legenda categoria (usata anche nel codice, `app.models.enums.DataSourceCategory`
 e `app/ingestion/source_registry.py`):
 - **A** — Utilizzabile senza riserve particolari (ToS compatibili, gratuita).
@@ -19,26 +28,44 @@ e `app/ingestion/source_registry.py`):
 ## Categoria A — Utilizzabili senza riserve
 
 ### football-data.co.uk — **fonte primaria di questo progetto**
-- **Cosa offre**: CSV storici risultati + quote di chiusura di più bookmaker.
+- **Cosa offre**: CSV storici risultati + quote di più bookmaker.
 - **URL**: `https://www.football-data.co.uk/mmz4281/<YYZZ>/<div>.csv` (es. `2425/E0.csv`
   per Premier League 2024/25, `2425/I1.csv` per Serie A). Nessuna chiave/login.
-- **Colonne verificate**: `Div, Date, Time, HomeTeam, AwayTeam, FTHG, FTAG, FTR,
-  HTHG, HTAG, HTR, Referee, HS, AS, HST, AST, HC, AC, HF, AF, HY, AY, HR, AR`, più
-  un pannello **variabile** di colonne quote per bookmaker (`B365H/D/A`,
-  `PSH/PSD/PSA` = Pinnacle, `MaxH/D/A`, `AvgH/D/A`) e Over/Under 2.5
-  (`B365>2.5`/`B365<2.5`, ecc.). Il pannello bookmaker cambia nel tempo — il
+- **Colonne — verificate con un fetch HTTP reale** (non solo da documentazione
+  secondaria) di `notes.txt` e di un CSV Premier League 2024/25 (380 righe) e
+  Serie A 2024/25 (380 righe): `Div, Date, Time, HomeTeam, AwayTeam, FTHG, FTAG,
+  FTR, HTHG, HTAG, HTR, Referee (assente nei file Serie A), HS, AS, HST, AST, HC,
+  AC, HF, AF, HY, AY, HR, AR`, più due pannelli quote per bookmaker: uno
+  **pre-chiusura** (es. `B365H/D/A`, `PSH/PSD/PSA`, `1XBH/D/A`, `BFH/D/A`,
+  `MaxH/D/A`, `AvgH/D/A`, `BFEH/D/A` — raccolte il venerdì/martedì pomeriggio
+  precedente) e uno di **vera chiusura**, stesso prefisso bookmaker con una "C"
+  inserita (es. `B365CH/CD/CA`, `PC>2.5`/`PC<2.5`) — distinzione confermata
+  testualmente da `notes.txt`: "These are for pre-closing odds... For the
+  closing odds, as below but with an additional 'C' character". Il pannello
+  bookmaker completo verificato (2024/25): 1XBet, Bet365, Betfair, Bet&Win,
+  Pinnacle, William Hill, Market Max, Market Average, Betfair Exchange (più
+  storicamente Interwetten/VC Bet/Ladbrokes/Betfred/BetMGM/BetVictor/Blue
+  Square/Coral/Gamebookers/Paddy Power/Skybet/Sporting Odds/Sportingbet/Stan
+  James/Stanleybet in stagioni più vecchie). Il pannello cambia nel tempo — il
   provider (`app/providers/football_data_co_uk/provider.py`) lo scopre a runtime
-  invece di assumerne uno fisso.
+  contro una tabella di prefissi nota invece di assumerne uno fisso, e distingue
+  esplicitamente pre-chiusura da chiusura (chiave bookmaker `"<Nome>"` vs
+  `"<Nome> (closing)"`).
 - **Storico**: Premier League dal 1993/94 (dettagli/quote solo da stagioni più
-  recenti); aggiornato almeno due volte a settimana durante la stagione.
-- **Confidenza**: alta — verificato tramite mirror GitHub di `notes.txt` più
-  molteplici fonti indipendenti (pacchetti `soccerdata`/`worldfootballR`); non è
-  stato possibile fare un fetch diretto della pagina live in questa sessione
-  (rete sandboxata) — un controllo manuale una tantum del formato corrente prima
-  dell'uso in produzione resta raccomandato.
-- **Stato nel codice**: implementato (`FootballDataCoUkProvider`), con test unitari
-  sul parsing (`tests/test_football_data_provider.py`) su un CSV sintetico che
-  replica lo schema reale.
+  recenti); aggiornato almeno due volte a settimana durante la stagione —
+  confermato: il file 2024/25 di entrambi i campionati è stato scaricato con
+  successo e conteneva la stagione completa (380 partite).
+- **Confidenza**: **alta, verificata direttamente** — non più solo da fonti
+  secondarie. Una volta ottenuto l'accesso di rete in questa sessione, sono stati
+  scaricati con successo `notes.txt` e i CSV 2024/25 di entrambi i campionati, e
+  sono state ingerite realmente **7.600 partite** (10 stagioni EPL + 10 stagioni
+  Serie A, 2015/16–2024/25, 68 squadre, 343.072 righe di quote) tramite
+  `scripts/ingest_football_data.py`.
+- **Stato nel codice**: implementato e **verificato con dati reali**
+  (`FootballDataCoUkProvider`), con test unitari (`tests/test_football_data_provider.py`,
+  fixture sintetica ma con lo schema colonne reale incluse le colonne di
+  chiusura) e con l'ingestione bulk reale eseguita e funzionante end-to-end
+  (analisi, API, frontend, backtest — vedi sotto).
 
 ### API-Football (api-football.com / api-sports.io)
 - **Cosa offre**: fixture, squadre, giocatori, formazioni, infortuni, statistiche —
