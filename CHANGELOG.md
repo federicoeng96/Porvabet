@@ -96,3 +96,24 @@ completi — è un indice.
   loss/calibrazione su ogni metrica, per entrambi i campionati — risultato
   negativo più netto di quello xG. **Non attivata**, codice testato ma non
   collegato al layer live.
+- `7d42d91` — Betson (via diretta.it): override ToS esplicito richiesto
+  dall'utente su un divieto assoluto (categoria C, nessuna eccezione uso
+  personale), `LICENSE_RISK` dedicato distinto dai provider B. **Non
+  implementato**: le quote renderizzano solo lato client e un tentativo reale
+  con Playwright ha verificato che questa sessione non riesce a far passare
+  un browser headless attraverso il proxy verso **nessun** host esterno
+  (stessa firma di errore anche su google.com) — limite d'ambiente
+  documentato, non blocco specifico del sito. livescore.com auditato da zero
+  come backup (società distinta, verificata dal footer): quote reali dietro
+  un widget affiliato gated per paese/utente, mai osservate dal vivo.
+  `FallbackOddsProvider` implementa il fallback tra le due fonti, testato con
+  provider finti. ROADMAP.md: colonna ALERT frontend rivalutata, resta non
+  sbloccata (nessuna quota reale disponibile da nessuna delle due fonti).
+- `939133b` — Audit FantaLab (moduli/titolari/ballottaggi): **bloccato e
+  segnalato, nessuna implementazione**. Nessuna API dati piana esiste (bundle
+  JS unico ispezionato per intero); i dati reali sono dietro un Firebase
+  Realtime Database autenticato con un login Cognito il cui ponte verso
+  Firebase non è verificabile staticamente. Richiederebbe login Premium reale
+  automatizzato via browser (bloccato in questo ambiente) più un rischio
+  verso l'account Premium dell'utente stesso — decisione lasciata
+  esplicitamente all'utente, non presa autonomamente. Solo documentazione.
