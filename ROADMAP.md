@@ -184,13 +184,31 @@ risolvibile (squadra mai ingerita da football-data.co.uk) viene saltato e
 riportato esplicitamente (`scripts/ingest_understat_tactical_features.py`),
 mai indovinato.
 
-**Prima estrazione reale eseguita**: `scripts/ingest_understat_tactical_features.py`
-ha scritto **10.640 righe reali** `TacticalFeature` (xG, xGA, npxG, npxGA,
+**Estrazione reale ora completa su tutte le 10 stagioni disponibili**
+(aggiornamento in un turno successivo — era rimasta scoped a un'unica
+stagione "per tempo"): `scripts/ingest_understat_tactical_features.py` ha
+scritto **106.400 righe reali** `TacticalFeature` (xG, xGA, npxG, npxGA,
 PPDA, deep completions/deep completions allowed — window_matches=1, valore
 grezzo per singola partita, non ancora una media mobile) per EPL+Serie A,
-stagione 2023/24, 0 nomi squadra irrisolti. Scalare a tutte le 10 stagioni è
-meccanico (stesso script, altre stagioni in `SEASONS`) ma non ancora eseguito
-per tempo in questa sessione.
+**tutte e 10 le stagioni 2015/16–2024/25**, verificato 15.200/15.200
+apparizioni squadra-partita attese (100%, 0 nomi irrisolti residui) contro
+il roster reale di ogni stagione. Tre nuovi alias squadra trovati e
+verificati durante il backfill (stesso pattern hand-curated già in uso,
+mai una fuzzy match): `West Bromwich Albion`→`West Brom`,
+`SPAL 2013`→`Spal`, `Parma Calcio 1913`→`Parma` — nomi ufficiali/storici
+usati da understat per squadre che football-data.co.uk registra
+diversamente.
+
+**Nota operativa emersa durante il backfill**: richieste ripetute a
+understat in rapida sequenza (un ciclo di retry troppo aggressivo dopo i
+primi errori di rete) hanno iniziato a fallire con una quota crescente di
+`RemoteProtocolError` — un pattern coerente con un rate-limit/soft-block,
+non semplice instabilità casuale. Corretto lo script: pausa tra richieste
+alzata da 2s a 10s, e soprattutto aggiunto un controllo solo-DB che salta
+del tutto la richiesta live a understat per una stagione già completamente
+persistita (prima la rifaceva comunque a ogni esecuzione, anche per dati
+già presenti) — una singola esecuzione pulita, non un loop di retry
+stretto, ha poi completato il resto senza altri errori.
 
 **Collegate al Decision Engine, backtestate, decisione basata sui numeri**
 (v. MODEL_SPEC.md/BACKTEST_SPEC.md per il dettaglio):
@@ -202,14 +220,19 @@ per tempo in questa sessione.
   attivata.
 Entrambe restano nel codice, testate, non collegate al layer di analisi live.
 
-**Cosa resta esplicitamente aperto** (non fatto in questa sessione):
+**Cosa resta esplicitamente aperto**:
 - Aggregazione a finestra mobile no-leakage (window_matches>1) — quale
   finestra, quale aggregazione, è una vera decisione di design, meglio presa
   quando un consumatore reale (Matchup/Intelligence Engine, punto 6 sotto) ne
   ha bisogno che indovinata ora.
-- Estensione alle altre 9 stagioni disponibili.
+- ✅ ~~Estensione alle altre 9 stagioni disponibili~~ — fatto (v. sopra).
 - crosses_per_90/progressive_passes (non in understat, servirebbero fbref o
   un'altra fonte — bloccati dagli stessi motivi sopra).
+- Le due correzioni già testate (xG su Dixon-Coles, deep completions sui
+  corner) non sono state ri-backtestate contro le 9 stagioni aggiuntive ora
+  disponibili — la decisione già presa (non attivarle) si basava solo su
+  2023/24; un ri-test su un campione più ampio potrebbe cambiare la
+  conclusione o confermarla con più confidenza, non ancora fatto.
 
 ### 6. ✅ Intelligence Engine — livello di validazione costruito, ancora senza una fonte di segnali reale
 `app/engine/intelligence/` non è più vuoto: `signals.py` definisce

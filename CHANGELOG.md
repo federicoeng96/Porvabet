@@ -153,3 +153,16 @@ completi — è un indice.
   testato contro l'API live** (nessuna credenziale disponibile in questa
   sessione) — solo contro le classi di risorse reali di betfairlightweight.
   149 test passano (7 nuovi), lint pulito.
+- `7bfbdff`/`855c1a4`/(finale) — Roadmap item 5: estensione dell'ingestione
+  reale `TacticalFeature` (understat) da 1 a **tutte e 10 le stagioni**
+  disponibili (2015/16–2024/25), EPL+Serie A: **106.400 righe reali**,
+  verificate 15.200/15.200 apparizioni squadra-partita attese (100%). Tre
+  nuovi alias squadra trovati e verificati durante il backfill (stesso
+  pattern hand-curated già in uso): West Bromwich Albion→West Brom, SPAL
+  2013→Spal, Parma Calcio 1913→Parma. Un ciclo di retry troppo aggressivo
+  contro understat ha prodotto un pattern di errori coerente con un
+  rate-limit/soft-block (non instabilità casuale) — corretto lo script:
+  pausa 2s→10s tra richieste, e un controllo solo-DB che salta del tutto la
+  richiesta live per una stagione già completamente persistita invece di
+  rifarla sempre. Una singola esecuzione pulita ha poi completato il resto
+  senza errori. 149 test passano, lint pulito.
