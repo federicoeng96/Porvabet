@@ -38,3 +38,11 @@ completi — è un indice.
   attivata in produzione**. Terzo tentativo indipendente (dopo NB e più
   stagioni) con la stessa conclusione — rafforza l'ipotesi "feature mancanti"
   sulla struttura media, non un problema di forma/calibrazione.
+- `606aafb` — Aggiornato CHANGELOG.
+- `2a3d20b` — Verificati fbref/understat con rete reale per la prima volta:
+  **entrambi rotti**. understat ha cambiato struttura (dati non più
+  incorporati nell'HTML); fbref blocca con una sfida Cloudflare prima del
+  contenuto. Item 5 roadmap (Matchup Engine) bloccato sul lato dati,
+  documentato onestamente invece di forzare un workaround (bypassare
+  Cloudflare richiederebbe un browser reale, decisione non presa
+  autonomamente).
