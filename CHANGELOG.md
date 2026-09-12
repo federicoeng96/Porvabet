@@ -222,3 +222,43 @@ completi — è un indice.
   questo collegamento — documentato onestamente, non forzato. Nuovo
   `RUNNING_LOCALLY.md` per completare la verifica dal computer dell'utente.
   161 test passano, lint pulito.
+- `fc37ef8` — **Decision Layer: "n/d" invece di riga saltata.**
+  `_build_candidates_and_predictions` fa ora get-or-create di
+  `Market`/`MarketOutcome` per MATCH_RESULT/TOTAL_GOALS e persiste sempre
+  una `Prediction` per ogni esito con probabilità calcolabile — con quota
+  reale (`Candidate`/`RiskSelection`) quando esiste, altrimenti
+  `bookmaker_odds=None`/`value=None` esplicito, mai una riga assente.
+  `CountEstimateOut` generalizzato in `NoOddsEstimateOut` (uno per esito,
+  non solo coppie Over/Under). Frontend aggiornato. 163 test passano
+  (2 nuovi end-to-end), lint pulito, build frontend verificata.
+- `ac68684` — **Fixture provider reale: football-data.org, non diretta.it**
+  (correzione esplicita dell'utente). diretta.it verificato dal vivo avere
+  lo stesso blocco JS-rendering delle quote Betson anche per il calendario.
+  `FootballDataOrgFixtureProvider` (categoria A): endpoint reale
+  `GET /v4/competitions/{PL|SA}/matches?matchday=N` verificato dal vivo
+  (non assunto), rete della sandbox NON bloccata verso questa API (a
+  differenza di Betfair). Nessuna chiave disponibile — testato con
+  `httpx.MockTransport` sullo schema JSON reale verificato.
+  `ingest_upcoming_fixture` persiste `Match` `SCHEDULED`, idempotente.
+  172 test passano, lint pulito.
+- `10b860a` — Indagine Betfair corner/cartellini: il blocco di rete copre
+  in realtà l'intero dominio betfair.com (confermato anche su
+  `docs.developer.betfair.com`), non solo login/Betting API — non
+  verificabile da questa sandbox. `betfairlightweight` non ha un catalogo
+  market type, ma il suo In-Play Service traccia corner/cartellini come
+  statistiche live (indizio reale, non conferma di un market type
+  exchange). Corner/cartellini restano "n/d" per istruzione esplicita
+  dell'utente — nessuna modifica di codice, solo documentazione.
+- **Sessione notturna autonoma** (istruzioni: procedere con piena autorità
+  decisionale tranne su due punti — nessuna spesa di denaro, nessuna fonte
+  nuova con divieto ToS assoluto mai vista prima): verificato direttamente
+  nel codice, non a memoria, che il precompute dei 10 livelli di rischio
+  (`build_risk_ladder`, 1 principale + 2 alternative) e la sua simulazione
+  nel backtest walk-forward (hit rate/ROI per livello, già in
+  `BACKTEST_SPEC.md`) **erano già entrambi implementati e testati prima di
+  questa sessione** — nessun lavoro necessario, solo verifica e conferma
+  nei documenti (v. `ROADMAP.md` punto 19). Stesso per il frontend
+  (tabella, rischio di gruppo/per-partita senza ricalcolo, schedina
+  automatica, popover alert con le soglie provvisorie richieste
+  10%/15%) — già completo. Aggiornati ARCHITECTURE.md/MODEL_SPEC.md/
+  README.md per coerenza con lo stato reale del codice.

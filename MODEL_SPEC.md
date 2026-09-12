@@ -121,6 +121,14 @@ quota nel CSV (verificato contro lo schema colonne reale). Di conseguenza:
   frontend, etichettate esplicitamente come "stima statistica, nessuna quota
   di mercato disponibile" — mai presentate come una selezione scommettibile
   con value calcolato.
+- **Lo stesso meccanismo è stato generalizzato** (v. ROADMAP.md) a
+  MATCH_RESULT/TOTAL_GOALS: quando un mercato ha una quota Betfair liquida,
+  entra normalmente nella risk ladder come prima; quando non ce l'ha ancora
+  (comune per una partita lontana dal kickoff), il modello mostra comunque
+  probabilità/quota-fair nello stesso `additional_estimates` — mai una riga
+  assente, mai un prezzo inventato. `NoOddsEstimateOut` è quindi un tipo
+  generico (un esito per riga, non solo coppie Over/Under), non più
+  specifico a corner/cartellini.
 - Le linee usate (9.5 corner, 3.5 cartellini) sono le **linee convenzionali
   note nel mercato delle scommesse sportive** (dominio pubblico, non il prezzo
   proprietario di un bookmaker), scelte solo per esprimere la probabilità del

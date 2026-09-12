@@ -74,6 +74,24 @@ riflette cosa è già fatto e cosa manca davvero).
     misurabile reale nelle `TacticalFeature`, fail-conservative quando non
     stimabile. Nessuna fonte reale di segnali ancora collegata — solo il
     meccanismo di validazione, non il generatore.
+18. ✅ **Betfair Exchange collegato al Decision Layer** (categoria D,
+    credenziali reali configurate) — 1X2 e O/U 2.5, rinnovo automatico
+    sessione, mai testato dal vivo per un blocco di rete dell'intera
+    sandbox (non un problema di credenziali/codice — v. `DATA_SOURCES.md`/
+    `RUNNING_LOCALLY.md`). Corner/cartellini restano "n/d": indagati a
+    fondo, non verificabili da questa sandbox (v. punto sotto).
+19. ✅ **"n/d" esplicito invece di riga saltata + fixture future reali**: il
+    Decision Layer mostra sempre probabilità/quota-modello per MATCH_RESULT/
+    TOTAL_GOALS anche senza quota liquida (mai una riga assente, mai un
+    prezzo inventato — v. `NoOddsEstimateOut`). `FootballDataOrgFixtureProvider`
+    (categoria A) popola la prossima giornata reale Premier League/Serie A
+    (non ancora testato dal vivo: manca una chiave gratuita, ma la rete di
+    questa sandbox non è bloccata verso questa API). Il precompute dei 10
+    livelli di rischio (1 principale + 2 alternative, `build_risk_ladder`)
+    e la sua simulazione nel backtest walk-forward (hit rate/ROI per
+    livello, v. `BACKTEST_SPEC.md`) **erano già entrambi implementati e
+    testati prima di questa nota** — verificato di nuovo direttamente nel
+    codice, non solo a memoria, prima di dichiararli "fatti".
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 

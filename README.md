@@ -10,7 +10,8 @@ Serie A). Vedi la documentazione di progetto prima di tutto:
 - [`ROADMAP.md`](./ROADMAP.md) — stato reale e prossimi passi
 - [`RUNNING_LOCALLY.md`](./RUNNING_LOCALLY.md) — come eseguire il progetto sul
   tuo computer per una verifica end-to-end reale (necessario per Betfair
-  Exchange: la sandbox di sviluppo è bloccata a livello di rete, v. `DATA_SOURCES.md`)
+  Exchange, bloccato a livello di rete dalla sandbox di sviluppo — non per
+  football-data.org, verificabile anche da lì — v. `DATA_SOURCES.md`)
 
 ## Uso previsto
 
@@ -42,10 +43,16 @@ funzionanti in questo progetto:
   ("FC Alpha/Beta/...", fonte `synthetic_dev_fixture` nel database), utili solo
   per uno smoke-test rapido della pipeline senza dover scaricare storico reale
   — non usare mai per un'analisi che verrà presa sul serio.
+- **Partite future reali** (`backend/scripts/ingest_upcoming_fixtures.py`,
+  richiede una chiave gratuita `FOOTBALL_DATA_ORG_API_KEY`): popola la
+  prossima giornata reale di Premier League/Serie A come partite
+  `SCHEDULED` — football-data.co.uk sopra copre solo lo storico, mai il
+  calendario futuro.
 
 Il frontend mostra sempre la quota del bookmaker realmente presente nei dati
-ingeriti (es. "Bet365", "1XBet", "Market Average" da football-data.co.uk) — mai
-ePlay24, per cui non esiste accesso automatico noto (v. `DATA_SOURCES.md`).
+ingeriti (es. "Bet365", "1XBet", "Market Average" da football-data.co.uk, o
+"Betfair" per una partita futura con quota Exchange live) — mai ePlay24, per
+cui non esiste accesso automatico noto (v. `DATA_SOURCES.md`).
 
 ## ⚠️ Rischi legali noti
 
@@ -135,21 +142,35 @@ npm run dev   # http://localhost:3000
 
 ## Configurazione
 
-`backend/.env` (opzionale, vedi `app/config.py`):
+`backend/.env` (opzionale, vedi `app/config.py` e `backend/.env.example` per
+il template completo — tutte le chiavi sotto sono facoltative, ogni provider
+degrada a "non disponibile" senza mai fabbricare dati):
 
 ```
 DATABASE_URL=postgresql+psycopg://porvabet:porvabet_dev@localhost:5432/porvabet
-API_FOOTBALL_KEY=   # opzionale — senza chiave il provider API-Football è semplicemente disabilitato
+API_FOOTBALL_KEY=              # opzionale — API-Football (fixture/statistiche)
+FOOTBALL_DATA_ORG_API_KEY=     # opzionale — football-data.org (prossima giornata reale)
+BETFAIR_APP_KEY=               # opzionale — Betfair Exchange, Delayed key (mai la Live)
+BETFAIR_USERNAME=
+BETFAIR_PASSWORD=
 ```
+
+Betfair/football-data.org richiedono anche una verifica dal computer
+dell'utente per il test end-to-end reale — v. `RUNNING_LOCALLY.md`.
 
 ## Cosa NON fa (onestamente, oggi)
 
 - Non mostra quote reali di ePlay24 (nessun accesso pubblico noto — v. `DATA_SOURCES.md`).
   Le quote mostrate provengono dai dati storici ingeriti da football-data.co.uk
-  (bookmaker reali come Bet365/1XBet/Pinnacle o media di mercato), etichettate
-  come tali nell'interfaccia.
-- Non copre corner, cartellini, falli o player props (mancano modelli e dati
-  ingeriti per questi mercati — v. `MODEL_SPEC.md`/`ROADMAP.md`).
+  (bookmaker reali come Bet365/1XBet/Pinnacle o media di mercato) o, per
+  partite future, da Betfair Exchange quando configurato — sempre etichettate
+  con la fonte reale nell'interfaccia.
+- Corner/cartellini hanno un modello reale (`PoissonCountModel`, backtestato
+  su dati storici reali) ma **nessuna fonte di quote li copre ancora**
+  (né football-data.co.uk né Betfair, per quanto verificabile — v.
+  `DATA_SOURCES.md`): il modello mostra sempre la propria probabilità, ma
+  Value/Alert restano "n/d" per questi due mercati specificamente. Falli e
+  player props non hanno né modello né dati ingeriti.
 - Non ha un motore live (solo l'architettura lo prevede, per design).
 - Non promette vincite: il backtest reale su EPL/Serie A 2019-2025 mostra ROI
   negativo su tutti i livelli di rischio con il modello attuale (v.
