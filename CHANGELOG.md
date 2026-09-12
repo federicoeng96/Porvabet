@@ -138,3 +138,18 @@ completi — è un indice.
   equivalente trovata (BBC Sport divieto più esplicito del progetto, Sky
   Sports UK non perseguita per assenza di struttura verificata) —
   documentato onestamente invece di forzare un parser fragile.
+- `a97db5e` — Aggiunta Betfair Exchange come fonte quote **ufficiale**
+  (Betting API, account personale) — nuova categoria distinta
+  `D_OFFICIAL_API_PERSONAL_ACCOUNT` (non A/B/C: qui non c'è scraping da
+  classificare), con migrazione Alembic dedicata per l'ENUM Postgres.
+  Verificata la documentazione ufficiale (login interattivo senza
+  certificato, scelto esplicitamente al posto del login "bot"; Application
+  Key Delayed gratuita, mai la Live a pagamento) prima di implementare.
+  Usata `betfairlightweight` (libreria reale, attiva) invece di un client
+  scritto da zero. `BetfairExchangeOddsProvider` sempre etichettato
+  "Betfair (exchange, dati ritardati 1-180s)", mai confuso con una quota
+  da bookmaker. `FallbackOddsProvider` ora gestisce anche eccezioni
+  impreviste da un provider reale, non solo `NotImplementedError`. **Non
+  testato contro l'API live** (nessuna credenziale disponibile in questa
+  sessione) — solo contro le classi di risorse reali di betfairlightweight.
+  149 test passano (7 nuovi), lint pulito.
