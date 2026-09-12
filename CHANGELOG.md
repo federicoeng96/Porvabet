@@ -175,3 +175,31 @@ completi — è un indice.
   chiave richiesto (mai criptico), e la lettura reale da variabili
   d'ambiente (non solo dagli argomenti costruttore, unico percorso testato
   finora) è ora verificata. 151 test passano, lint pulito.
+- `0f4feee` — Riconfermata correlazione PPDA/deep-completions vs corner su
+  10 stagioni (r=−0.310/+0.424 su 15.122 oss., contro −0.264/+0.447 su
+  1.516) — non un artefatto di campione piccolo. Backtest walk-forward
+  completo non ripetuto: la riconferma della correlazione grezza risponde
+  già alla domanda posta (il problema è nel meccanismo della correzione,
+  non nella scarsità di dati) — motivato esplicitamente invece di rifare
+  un test dall'esito già prevedibile.
+- `11d2dfb` — Scaffolding frontend (tabella con probabilità/quota-modello
+  per partite future senza quota reale): **fermato prima di implementare**,
+  due blocchi architetturali reali trovati investigando, non un rinvio
+  arbitrario. (1) `_build_candidates_and_predictions` salta un mercato
+  senza `OddsQuote` reale — non produce mai un `Candidate` senza quota
+  bookmaker, `RiskFactors.bookmaker_odds` è obbligatorio e usato nel risk
+  score. (2) Verificato via query diretta: 0 partite future/senza
+  risultato nei 7.600 match reali ingeriti — nessuna fonte di calendario
+  fixture future è mai stata collegata. Nessuna decisione di design presa
+  autonomamente su come rappresentare una "stima senza quota" nel Decision
+  Layer già testato.
+- `22e2a46` — Ri-testata la correzione xG su Dixon-Coles con tutte le 10
+  stagioni (~12x più dati): **il precedente segnale positivo per l'EPL non
+  regge** — differenze aggregate ora marginali (±0.0005-0.0007) e
+  incoerenti per entrambi i campionati, compatibili con rumore. Il
+  miglioramento osservato su una sola stagione era verosimilmente un
+  artefatto di campione piccolo. Decisione (non attivata) confermata, ora
+  su base molto più solida. Nota tecnica: riscritta la comparazione con uno
+  storico per-squadra precomputato (la versione naive, O(n²) via query
+  per-match, è stata uccisa dopo 7+ minuti senza output su 10 stagioni).
+  151 test passano, lint pulito.
