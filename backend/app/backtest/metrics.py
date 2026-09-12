@@ -13,7 +13,11 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class BetRecord:
     probability: float  # model's probability for the selected outcome
-    bookmaker_odds: float
+    # None for markets with no real bookmaker price at all (e.g. corners/cards —
+    # see count_market_estimates.py): such bets contribute to hit_rate/brier/
+    # log_loss/calibration but are excluded from roi/profit_units/yield_pct,
+    # which return None rather than a fabricated figure if every bet lacks odds.
+    bookmaker_odds: float | None
     won: bool
     risk_level: int | None = None
     market_category: str | None = None
@@ -28,11 +32,14 @@ def hit_rate(bets: list[BetRecord]) -> float | None:
 
 
 def roi(bets: list[BetRecord], stake: float = 1.0) -> float | None:
-    """Flat-stake ROI: total profit / total staked."""
-    if not bets:
+    """Flat-stake ROI: total profit / total staked. Bets with no real bookmaker
+    price (bookmaker_odds=None) are excluded — returns None if none remain,
+    rather than silently treating a missing price as zero profit."""
+    priced = [b for b in bets if b.bookmaker_odds is not None]
+    if not priced:
         return None
-    total_staked = stake * len(bets)
-    total_return = sum((b.bookmaker_odds * stake if b.won else 0.0) for b in bets)
+    total_staked = stake * len(priced)
+    total_return = sum((b.bookmaker_odds * stake if b.won else 0.0) for b in priced)
     return (total_return - total_staked) / total_staked
 
 
@@ -45,9 +52,10 @@ def yield_pct(bets: list[BetRecord], stake: float = 1.0) -> float | None:
 
 
 def profit_units(bets: list[BetRecord], stake: float = 1.0) -> float | None:
-    if not bets:
+    priced = [b for b in bets if b.bookmaker_odds is not None]
+    if not priced:
         return None
-    return sum((b.bookmaker_odds * stake - stake if b.won else -stake) for b in bets)
+    return sum((b.bookmaker_odds * stake - stake if b.won else -stake) for b in priced)
 
 
 def brier_score(bets: list[BetRecord]) -> float | None:

@@ -26,6 +26,10 @@ from app.providers.whoscored.provider import PersonalUseNotAcknowledgedError
 class SofaScoreProvider(SportsDataProvider):
     source_key = "sofascore"
     category = DataSourceCategory.B_PERSONAL_USE_ONLY
+    # Explicit, code-level (not just a comment) tag for the specific ToS risk —
+    # see DATA_SOURCES.md for the verbatim clause and their own FAQ confirming
+    # no public API exists at all (not even a paid/commercial one).
+    LICENSE_RISK = "personal_use_only_betting_platform_clause"
 
     def __init__(self, acknowledge_personal_use_only: bool = False) -> None:
         if not acknowledge_personal_use_only:

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.ingestion.match_ingestion import canonicalize_team_name, ingest_historical_match
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
+from app.models.stats import TeamMatchStats
 from app.providers.base.dto import HistoricalMatchRecord
 
 
@@ -23,6 +24,18 @@ def _sample_record(external_ref="synthetic:test:1") -> HistoricalMatchRecord:
         away_goals_ft=1,
         home_goals_ht=1,
         away_goals_ht=0,
+        home_shots=14,
+        away_shots=9,
+        home_shots_on_target=6,
+        away_shots_on_target=3,
+        home_corners=7,
+        away_corners=4,
+        home_fouls=10,
+        away_fouls=12,
+        home_yellow_cards=2,
+        away_yellow_cards=3,
+        home_red_cards=0,
+        away_red_cards=1,
         closing_odds_1x2={"Bet365": {"H": 1.9, "D": 3.6, "A": 4.2}},
         closing_odds_over_under_2_5={"Bet365": {"OVER": 1.85, "UNDER": 1.95}},
         external_ref=external_ref,
@@ -62,6 +75,35 @@ def test_ingest_creates_teams_match_markets_and_odds(db_session):
     assert odds[0].bookmaker == "Bet365"
 
 
+def test_ingest_persists_corners_cards_fouls_per_team(db_session):
+    """Regression test: these fields were parsed by the provider but silently
+    discarded during ingestion until this was fixed — see ROADMAP.md."""
+    match = ingest_historical_match(db_session, _sample_record(external_ref="synthetic:test:stats"))
+    db_session.flush()
+
+    stats = db_session.scalars(
+        select(TeamMatchStats).where(TeamMatchStats.match_id == match.id)
+    ).all()
+    assert len(stats) == 2
+
+    home_stats = next(s for s in stats if s.is_home)
+    away_stats = next(s for s in stats if not s.is_home)
+
+    assert home_stats.team_id == match.home_team_id
+    assert home_stats.shots == 14
+    assert home_stats.shots_on_target == 6
+    assert home_stats.corners == 7
+    assert home_stats.fouls_committed == 10
+    assert home_stats.yellow_cards == 2
+    assert home_stats.red_cards == 0
+
+    assert away_stats.team_id == match.away_team_id
+    assert away_stats.corners == 4
+    assert away_stats.fouls_committed == 12
+    assert away_stats.yellow_cards == 3
+    assert away_stats.red_cards == 1
+
+
 def test_ingest_is_idempotent(db_session):
     record = _sample_record(external_ref="synthetic:test:idempotent")
     match1 = ingest_historical_match(db_session, record)
@@ -87,3 +129,9 @@ def test_ingest_is_idempotent(db_session):
         select(OddsQuote).where(OddsQuote.market_outcome_id == home_outcome.id)
     ).all()
     assert len(odds) == 1
+
+    # TeamMatchStats should also be updated in place, not duplicated.
+    stats = db_session.scalars(
+        select(TeamMatchStats).where(TeamMatchStats.match_id == match1.id)
+    ).all()
+    assert len(stats) == 2

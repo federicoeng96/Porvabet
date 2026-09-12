@@ -21,16 +21,25 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.engine.decision.count_market_estimates import (
+    CountMarketEstimate,
+    compute_count_market_estimates,
+)
 from app.engine.decision.risk_score import RiskFactors
 from app.engine.decision.selection import Candidate, build_risk_ladder
 from app.engine.decision.value import classify_alert, discrepancy_pct, expected_value
 from app.engine.statistical.dixon_coles import DixonColesModel, GoalMatchInput
-from app.models.enums import AlertLevel, MatchStatus, ModelFamily
+from app.models.enums import AlertLevel, MarketCategory, MatchStatus, ModelFamily
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.prediction import Alert, AnalysisVersion, ModelVersion, Prediction, RiskSelection
 
-MARKET_LABELS = {"MATCH_RESULT": "1X2", "TOTAL_GOALS": "Over/Under 2.5 goals"}
+MARKET_LABELS = {
+    "MATCH_RESULT": "1X2",
+    "TOTAL_GOALS": "Over/Under 2.5 goals",
+    "CORNERS": "Over/Under corner totali",
+    "CARDS": "Over/Under cartellini totali",
+}
 MIN_TRAINING_MATCHES = 40
 
 
@@ -43,6 +52,7 @@ class InsufficientDataError(RuntimeError):
 class AnalysisResult:
     analysis_version_id: int
     risk_levels: list[dict]
+    count_market_estimates_computed: int  # CORNERS/CARDS: probability-only, no odds — see count_market_estimates.py
 
 
 def run_analysis_for_match(db: Session, match_id: int, trigger: str = "manual_refresh") -> AnalysisResult:
@@ -129,8 +139,107 @@ def run_analysis_for_match(db: Session, match_id: int, trigger: str = "manual_re
             }
         )
 
+    count_estimates = compute_count_market_estimates(db, match)
+    for estimate in count_estimates:
+        count_model_version = _get_or_create_count_model_version(db, match, estimate)
+        _persist_count_market_estimate(db, match, count_model_version, analysis_version, estimate)
+
     db.flush()
-    return AnalysisResult(analysis_version_id=analysis_version.id, risk_levels=risk_levels_out)
+    return AnalysisResult(
+        analysis_version_id=analysis_version.id,
+        risk_levels=risk_levels_out,
+        count_market_estimates_computed=len(count_estimates),
+    )
+
+
+def _get_or_create_count_model_version(
+    db: Session, match: Match, estimate: CountMarketEstimate
+) -> ModelVersion:
+    """Separate ModelVersion per count market (CORNERS/CARDS have independently
+    fitted attack/defense ratings) — never reuses the Dixon-Coles ModelVersion,
+    which would misrepresent which model actually produced the prediction."""
+    from app.models.core import Season
+
+    season = db.get(Season, match.season_id)
+    version_label = (
+        f"poisson_count-{estimate.market_category}-{match.kickoff_utc.date().isoformat()}"
+    )
+    existing = db.scalar(
+        select(ModelVersion).where(
+            ModelVersion.competition_id == season.competition_id,
+            ModelVersion.version_label == version_label,
+        )
+    )
+    if existing:
+        return existing
+    mv = ModelVersion(
+        family=ModelFamily.POISSON_COUNT_MODEL,
+        market_category=estimate.market_category,
+        competition_id=season.competition_id,
+        version_label=version_label,
+        trained_at=datetime.now(UTC),
+        training_data_cutoff=datetime.combine(
+            match.kickoff_utc.date(), datetime.min.time(), tzinfo=UTC
+        ),
+        notes=f"n_training_matches={estimate.n_training_matches}, line={estimate.line}",
+    )
+    db.add(mv)
+    db.flush()
+    return mv
+
+
+def _persist_count_market_estimate(
+    db: Session,
+    match: Match,
+    model_version: ModelVersion,
+    analysis_version: AnalysisVersion,
+    estimate: CountMarketEstimate,
+) -> None:
+    """Persists a CORNERS/CARDS probability estimate as a Prediction with
+    `bookmaker_odds=None` / `value=None` — deliberately never given a
+    `Candidate`/RiskSelection, since those require a real price (see
+    count_market_estimates.py docstring)."""
+    category = MarketCategory[estimate.market_category]
+    market = db.scalar(
+        select(Market).where(Market.match_id == match.id, Market.category == category)
+    )
+    if market is None:
+        market = Market(
+            match_id=match.id,
+            category=category,
+            label=MARKET_LABELS[estimate.market_category],
+            line=estimate.line,
+        )
+        db.add(market)
+        db.flush()
+
+    outcomes = {}
+    for code, label in (("OVER", f"Over {estimate.line}"), ("UNDER", f"Under {estimate.line}")):
+        outcome = db.scalar(
+            select(MarketOutcome).where(MarketOutcome.market_id == market.id, MarketOutcome.code == code)
+        )
+        if outcome is None:
+            outcome = MarketOutcome(market_id=market.id, code=code, label=label)
+            db.add(outcome)
+            db.flush()
+        outcomes[code] = outcome
+
+    uncertainty = max(0.0, 1.0 - min(estimate.n_training_matches, 300) / 300)
+    for code, probability in (("OVER", estimate.probability_over), ("UNDER", estimate.probability_under)):
+        db.add(
+            Prediction(
+                analysis_version_id=analysis_version.id,
+                market_outcome_id=outcomes[code].id,
+                model_version_id=model_version.id,
+                probability=probability,
+                fair_odds=1.0 / probability,
+                bookmaker_odds=None,
+                bookmaker_name=None,
+                value=None,
+                uncertainty=uncertainty,
+                confidence=1.0 - uncertainty,
+            )
+        )
 
 
 def _load_training_matches(db: Session, match: Match) -> list[GoalMatchInput]:

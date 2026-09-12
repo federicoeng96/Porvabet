@@ -41,6 +41,11 @@ class PersonalUseNotAcknowledgedError(RuntimeError):
 class WhoScoredProvider(SportsDataProvider):
     source_key = "whoscored"
     category = DataSourceCategory.B_PERSONAL_USE_ONLY
+    # Explicit, code-level (not just a comment) tag for the specific ToS clause
+    # this provider is at risk under — see DATA_SOURCES.md for the verbatim text
+    # and confirmation that it names betting platforms explicitly, not just a
+    # generic copy/redistribution restriction.
+    LICENSE_RISK = "personal_use_only_betting_platform_clause"
 
     def __init__(self, acknowledge_personal_use_only: bool = False) -> None:
         if not acknowledge_personal_use_only:

@@ -8,8 +8,9 @@
 | Over/Under gol | Stessa distribuzione di punteggio del modello Dixon-Coles, sommata sulla matrice di score | Nessun motivo di usare un modello diverso: O/U è una proiezione della stessa distribuzione congiunta dei gol. | **Implementato** |
 | Both Teams To Score | Idem, proiezione della stessa matrice | Idem | **Implementato** |
 | Handicap asiatico | Stessa matrice di score, soglia sulla differenza gol | Stessa distribuzione, cambia solo l'evento aggregato | Non ancora esposto nel Decision Layer (v. ROADMAP) |
-| Corner | Da valutare: Poisson/binomiale negativa separata per corner-for/against, corretta per avversario | I corner non seguono la stessa dinamica dei gol (dipendono da possesso, stile di attacco sulle fasce) — serve un modello dedicato con feature tattiche come input, non gli stessi due parametri attacco/difesa. | Non implementato in questo slice (mancano dati corner storici sufficientemente ricchi ingestiti) |
-| Cartellini / Falli | Binomiale negativa o Poisson, corretto per arbitro (feature `RefereeStats`) | I cartellini dipendono fortemente dall'arbitro, non solo dalle squadre — un modello che ignori l'arbitro è mal specificato. | Non implementato (richiede feature arbitro, v. ROADMAP) |
+| Corner | Poisson log-lineare attacco/difesa (Maher-style, senza il termine `rho` di Dixon-Coles — non pertinente ai conteggi corner) | I corner non condividono il problema di correlazione a basso punteggio dei gol; una struttura attacco/difesa log-lineare separata, fittata sui dati storici corner reali, è sufficiente come primo modello. | **Implementato** (`app/engine/statistical/count_market_model.py`) — dati storici reali ingeriti da football-data.co.uk (colonne HC/AC), 15.200 righe `TeamMatchStats` popolate su 7.600 partite reali EPL+Serie A. Overdispersione non ancora modellata (Poisson puro, non binomiale negativa) — v. nota sotto. |
+| Cartellini | Stessa struttura Poisson attacco/difesa, **senza correzione arbitro** | I cartellini dipendono fortemente dall'arbitro, ma nessun dato arbitro è ancora ingerito (v. DATA_SOURCES.md su AIA-FIGC/PGMOL) — un modello che lo ignori è deliberatamente incompleto, non mal specificato per omissione: la varianza spiegata dall'arbitro resta fuori dal modello finché quella feature non esiste, ed è documentato così invece di essere nascosto. | **Implementato** (stessa classe `PoissonCountModel`, cartellini = gialli+rossi combinati), dati storici reali ingeriti (colonne HY/AY/HR/AR). |
+| Falli | Dati ingeriti (colonne HF/AF, `TeamMatchStats.fouls_committed`) | — | Dati disponibili, nessun modello/mercato ancora costruito su di essi (i falli non sono tipicamente un mercato scommesse standalone come corner/cartellini) — v. ROADMAP. |
 | Player props (tiri, assist, cartellini) | Modelli specifici per giocatore (es. Poisson per tiri/gol individuali, corretto per minutaggio atteso), NON lo stesso modello di squadra applicato al singolo giocatore | Il volume di un giocatore dipende da minutaggio, ruolo, sistema di gioco — serve un layer che stimi prima il minutaggio atteso (dipendente da formazione, v. `lineup_reconciliation.py`) e poi la produzione condizionata. | Non implementato (richiede dati minutaggio/formazioni affidabili, v. ROADMAP) |
 
 Nessun "unico modello monolitico": ogni famiglia di mercato ha (o avrà) il proprio
@@ -37,6 +38,43 @@ evento — coerente con l'indicazione del brief.
   trasferibilità per le neopromosse (menzionato nel brief) è pianificato come
   un peso aggiuntivo sui match di stagioni precedenti in categorie diverse
   (v. ROADMAP), non ancora implementato.
+
+## Corner e cartellini: modello e limite strutturale sul value
+
+`PoissonCountModel` (`app/engine/statistical/count_market_model.py`) fitta,
+separatamente per corner e per cartellini, un rating attacco/difesa/vantaggio
+casa via massima verosimiglianza Poisson — stessa idea di Dixon-Coles ma senza
+il termine di correlazione `rho` (specifico alla sotto-stima dei punteggi
+bassi nei gol, non pertinente a un conteggio come i corner). Proprietà usata:
+la somma di due Poisson indipendenti è essa stessa Poisson(λ+μ), quindi il
+mercato "totale partita" (es. Over/Under 9.5 corner) non richiede costruire
+una matrice congiunta come per i gol.
+
+**Limite strutturale, non implementativo**: football-data.co.uk (l'unica fonte
+di quote reali in questo progetto) **non pubblica quote per corner o
+cartellini** — solo 1X2, Over/Under 2.5 gol e handicap asiatico hanno colonne
+quota nel CSV (verificato contro lo schema colonne reale). Di conseguenza:
+- Il modello produce una **probabilità reale**, stimata su dati storici reali
+  (15.200 righe `TeamMatchStats`, 7.600 partite EPL+Serie A).
+- Ma **non esiste un prezzo di mercato con cui calcolare value/edge** per
+  questi due mercati in nessuna fonte dati oggi integrata.
+- Queste stime (`app/engine/decision/count_market_estimates.py`) sono quindi
+  **volutamente escluse dalla risk ladder** (che richiede sempre probabilità
+  + quota reale) e esposte separatamente via API (`additional_estimates`) e
+  frontend, etichettate esplicitamente come "stima statistica, nessuna quota
+  di mercato disponibile" — mai presentate come una selezione scommettibile
+  con value calcolato.
+- Le linee usate (9.5 corner, 3.5 cartellini) sono le **linee convenzionali
+  note nel mercato delle scommesse sportive** (dominio pubblico, non il prezzo
+  proprietario di un bookmaker), scelte solo per esprimere la probabilità del
+  modello a un livello riconoscibile — non sono una quota inventata.
+
+Overdispersione (varianza > media) è un fenomeno noto nei conteggi di corner
+nella letteratura; questo modello usa Poisson puro come primo passo esplicito
+(più semplice, interpretabile), non una scelta definitiva — il backtest
+(v. BACKTEST_SPEC.md) è lo strumento che dovrebbe rivelare se serve una
+binomiale negativa (stessa struttura attacco/difesa, un parametro di
+dispersione in più) tramite la calibration curve.
 
 ## Probabilità → quota fair → value
 

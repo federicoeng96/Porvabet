@@ -53,6 +53,7 @@ class AlertLevel(str, enum.Enum):
 
 class ModelFamily(str, enum.Enum):
     DIXON_COLES_POISSON = "DIXON_COLES_POISSON"
+    POISSON_COUNT_MODEL = "POISSON_COUNT_MODEL"  # corners/cards attack-defense Poisson, see MODEL_SPEC.md
     NEGATIVE_BINOMIAL = "NEGATIVE_BINOMIAL"
     LOGISTIC_REGRESSION = "LOGISTIC_REGRESSION"
     GRADIENT_BOOSTING = "GRADIENT_BOOSTING"

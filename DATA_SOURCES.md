@@ -66,6 +66,18 @@ e `app/ingestion/source_registry.py`):
   fixture sintetica ma con lo schema colonne reale incluse le colonne di
   chiusura) e con l'ingestione bulk reale eseguita e funzionante end-to-end
   (analisi, API, frontend, backtest — vedi sotto).
+- **Corner/cartellini/falli (HC/AC/HY/AY/HR/AR/HF/AF)**: il parser li estrae
+  da sempre, ma fino a un audit dedicato in questa sessione **venivano
+  scartati silenziosamente durante l'ingestione** (mai scritti nel database,
+  nonostante fossero già letti dal CSV) — bug corretto:
+  `app/ingestion/match_ingestion.py` ora li persiste in `TeamMatchStats` (una
+  riga per squadra per partita). Verificato: 15.200 righe popolate su 7.600
+  partite reali. **Nessuna colonna quota per corner/cartellini esiste in
+  questo CSV** (solo 1X2, Over/Under 2.5 gol, handicap asiatico hanno prezzi)
+  — quindi questi dati alimentano un modello di probabilità reale
+  (`PoissonCountModel`, v. MODEL_SPEC.md) ma non un mercato con value/edge,
+  per assenza strutturale di un prezzo di mercato, non per una scelta di
+  design.
 
 ### API-Football (api-football.com / api-sports.io)
 - **Cosa offre**: fixture, squadre, giocatori, formazioni, infortuni, statistiche —
@@ -151,58 +163,112 @@ e `app/ingestion/source_registry.py`):
 
 ## Categoria B — Solo uso personale non commerciale (rischio accettato dall'utente)
 
+**Nota di verifica**: con accesso di rete reale disponibile in questa sessione,
+è stato tentato un fetch diretto di entrambe le pagine ToS sotto (sia via
+`curl` con header da browser reale, sia via `WebFetch`) — **entrambe
+restituiscono HTTP 403** (stesso tipo di blocco edge osservato per ePlay24).
+Le citazioni verbatim sotto restano quindi quelle ottenute tramite estrazione
+di ricerca (WebSearch, che ha accesso indicizzato al contenuto anche quando il
+fetch diretto della pagina è bloccato) — corroborate due volte, in due sessioni
+distinte, con lo stesso testo esatto entrambe le volte, il che ne rafforza
+l'affidabilità pur senza un fetch diretto della pagina live.
+
 ### WhoScored
-- **Clausola ToS (letta tramite estrazione diretta della pagina)**:
+- **Clausola ToS specifica sull'uso da piattaforme di scommesse** (non solo la
+  clausola generica su copia/ridistribuzione):
   > "The copying, downloading, reproduction, republication, framing, broadcasting
   > and transmission of WhoScored.com content including but not limited to all
   > statistics, data, products, tables, graphics and other information is
   > prohibited without an official licence."
   >
-  > "The use of WhoScored.com ratings by media, **betting** or fantasy platforms
-  > requires an official licence."
-- La seconda clausola nomina esplicitamente le piattaforme di scommesse — quindi
-  qualunque uso di questo progetto che ecceda l'uso privato personale dell'utente
-  è una violazione dei termini.
-- **Stato nel codice**: `WhoScoredProvider` richiede
-  `acknowledge_personal_use_only=True` per essere istanziato (altrimenti solleva
-  `PersonalUseNotAcknowledgedError`); lo scraping vero e proprio **non è
-  implementato** — gli endpoint reali non sono stati verificati in questo
-  progetto, e implementarli "a naso" violerebbe il principio di non inventare
-  endpoint.
+  > **"The use of WhoScored.com ratings by media, betting or fantasy platforms
+  > requires an official licence."**
+- La seconda clausola nomina **esplicitamente** le piattaforme di scommesse
+  ("betting platforms") — non è una clausola generica sul copyright applicata
+  per estensione: il documento stesso distingue questo caso d'uso e richiede
+  una licenza ufficiale che questo progetto non ha. Qualunque uso che ecceda
+  l'uso privato personale dell'utente è quindi una violazione diretta e
+  esplicita dei termini, non un'interpretazione.
+- **Stato nel codice**: `WhoScoredProvider` porta un flag esplicito
+  `LICENSE_RISK = "personal_use_only_betting_platform_clause"` (non solo un
+  commento — un attributo di classe leggibile/ispezionabile a runtime) e
+  richiede `acknowledge_personal_use_only=True` per essere istanziato
+  (altrimenti solleva `PersonalUseNotAcknowledgedError`); lo scraping vero e
+  proprio **non è implementato** — gli endpoint reali non sono stati
+  verificati in questo progetto, e implementarli "a naso" violerebbe il
+  principio di non inventare endpoint.
 
 ### SofaScore
-- **Clausola ToS**:
+- **Clausola ToS specifica sui bookmaker**:
   > License "does not include any resale or commercial use of the Platform or its
   > contents, derivative use, or use of data mining, robots, or similar data
   > gathering tools."
   >
-  > "SofaScore states that they do not supply sports data to bookmakers, and
-  > bookmakers should not rely on their site to verify bets."
+  > **"SofaScore states that they do not supply sports data to bookmakers, and
+  > bookmakers should not rely on their site to verify bets."**
+- **Conferma ufficiale aggiuntiva** (dalla loro stessa FAQ pubblica,
+  `sofascore.helpscoutdocs.com/article/129-sports-data-api-availability`,
+  verificata in questa sessione): *"a causa di accordi con i nostri fornitori
+  di dati, non possiamo condividere le fonti dati sotto forma di endpoint
+  API"* — nessuna procedura di licenza commerciale è menzionata; l'unica
+  opzione per terze parti è un widget per partner media, non un'API dati.
 - **Stato nel codice**: stessa logica di `WhoScoredProvider` —
-  `SofaScoreProvider` richiede lo stesso flag esplicito, scraping non implementato.
+  `SofaScoreProvider` porta lo stesso flag esplicito
+  `LICENSE_RISK = "personal_use_only_betting_platform_clause"` e richiede
+  `acknowledge_personal_use_only=True`, scraping non implementato.
 
 ---
 
 ## Categoria C — Solo interfaccia astratta, non implementare
 
-### ePlay24 (bookmaker target)
+### ePlay24 (bookmaker target) — **VERIFICA DEFINITIVA (accesso di rete reale)**
+
+**Conclusione: NO. Non esiste alcun modo tecnicamente lecito di ottenere le
+quote ePlay24 in modo automatico.** Non è più una conclusione per assenza di
+prove (come nella verifica iniziale, fatta senza accesso di rete diretto) —
+è stata testata direttamente, in questa sessione, con accesso di rete reale:
+
 - **Cosa si sa**: ePlay24 è un bookmaker italiano reale, con licenza ADM
   (E-PLAY24 ITA LTD, concessione GAD n. 16004) — confermato tramite siti di
   recensioni scommesse italiani.
-- **API pubblica**: **nessuna trovata**. Solo pagine consumer-facing, nessuna
-  documentazione per sviluppatori in nessuna ricerca effettuata.
-- **ToS sullo scraping**: **non verificato direttamente** in questa sessione (il
-  fetch diretto di eplay24.it non è riuscito nell'ambiente di ricerca usato) — non
-  va presentato come "vietato dal ToS" con certezza, ma la mancanza di qualunque
-  accesso pubblico/API rende comunque l'integrazione automatica non praticabile
-  senza un accordo diretto con l'operatore.
-- **Conclusione operativa**: `EPlay24OddsProvider` è un'interfaccia `OddsProvider`
-  che non fa nulla (`is_available()` ritorna `False`, ogni metodo dati solleva
-  `NotImplementedError`) — esiste solo perché il resto del codice dipenda
-  dall'astrazione `OddsProvider`, mai da ePlay24 direttamente. **In questo
-  vertical slice le quote mostrate provengono da football-data.co.uk (quote
-  storiche di chiusura di vari bookmaker), non da ePlay24** — il frontend lo
-  segnala esplicitamente nell'interfaccia.
+- **API pubblica**: nessuna trovata in nessuna ricerca (né direttamente, né
+  presso i principali aggregatori commerciali di quote — OpticOdds,
+  SportsDataIO, The Odds API, OddsJam, Sportradar — nessuno dei quali elenca
+  ePlay24 tra i bookmaker coperti).
+- **Test tecnico diretto eseguito in questa sessione** (con accesso di rete
+  reale, non solo tramite ricerca): richieste HTTP dirette (`curl`, con e senza
+  header da browser reale) e tramite `WebFetch` (instrada diversamente dal
+  proxy di rete della sandbox) verso:
+  - `https://www.eplay24.it/` → **HTTP 403 "Access Denied"** (pagina di errore
+    Akamai/edgesuite.net)
+  - `https://www.eplay24.it/robots.txt` → **HTTP 403**, stesso blocco
+  - `https://account.eplay24.it/pages/termini-condizioni` (la pagina termini e
+    condizioni stessa) → **HTTP 403**, stesso blocco, sia via `curl` sia via
+    `WebFetch`
+  
+  **Il sito blocca ogni richiesta automatizzata a livello di infrastruttura
+  edge (Akamai/WAF)**, indipendentemente da User-Agent o percorso richiesto —
+  incluso il semplice recupero della pagina dei propri termini di servizio.
+  Questo è più forte della precedente conclusione "ToS non verificato": qui è
+  stato verificato che **non è nemmeno possibile leggere in modo automatizzato
+  il testo dei ToS** per controllarne la clausola specifica sullo scraping,
+  perché il blocco tecnico avviene prima, a livello di rete/edge.
+- **Conclusione operativa**: non esiste (a) un'API pubblica, (b) un feed
+  documentato, né (c) una modalità tecnica di accesso automatizzato che superi
+  il blocco edge del sito stesso. `EPlay24OddsProvider` resta un'interfaccia
+  `OddsProvider` **senza alcuna implementazione reale** (`is_available()`
+  ritorna sempre `False`, ogni metodo dati solleva `NotImplementedError`) —
+  esiste solo perché il resto del codice dipenda dall'astrazione
+  `OddsProvider`, mai da ePlay24 direttamente. Un'integrazione futura
+  richiederebbe un accordo diretto/commerciale con l'operatore (o l'accesso
+  manuale dell'utente stesso alle proprie quote, mai uno scraping bypassato
+  dell'edge block), non un semplice miglioramento del codice.
+- **Implicazione per il resto del sistema**: v. la nota dedicata in
+  `ARCHITECTURE.md` — finché questo provider non è implementabile, il sistema
+  **stima probabilità e quote fair, ma non calcola un value/edge reale
+  rispetto al mercato ePlay24** (il "value" oggi mostrato è sempre calcolato
+  contro le quote della fonte realmente disponibile — football-data.co.uk —
+  mai contro una quota ePlay24 reale o simulata).
 
 ### Lega Serie A (legaseriea.it)
 - I termini del sito vietano esplicitamente "data mining, robot o simili

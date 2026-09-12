@@ -30,6 +30,29 @@ Il frontend mostra sempre la quota del bookmaker realmente presente nei dati
 ingeriti (es. "Bet365", "1XBet", "Market Average" da football-data.co.uk) — mai
 ePlay24, per cui non esiste accesso automatico noto (v. `DATA_SOURCES.md`).
 
+## ⚠️ Rischi legali noti
+
+Due fonti dati (`app/providers/whoscored/` e `app/providers/sofascore/`) sono
+presenti nel codice **solo come interfaccia collegata a un rischio legale
+esplicito**, non come integrazioni pronte all'uso. Questo va tenuto visibile
+qui, non solo in un file di configurazione:
+
+| Fonte | Clausola ToS specifica (verbatim) | Rischio |
+|---|---|---|
+| **WhoScored** | *"The use of WhoScored.com ratings by media, betting or fantasy platforms requires an official licence."* | Nomina esplicitamente le piattaforme di scommesse. Questo progetto è un motore di analisi scommesse — qualunque uso che ecceda l'uso privato personale dell'utente viola direttamente questa clausola. |
+| **SofaScore** | *"SofaScore states that they do not supply sports data to bookmakers, and bookmakers should not rely on their site to verify bets."* (più: nessuna API pubblica esiste nemmeno a pagamento, per loro stessa FAQ) | Disclaimer esplicito contro l'uso da parte di bookmaker/piattaforme scommesse. |
+
+Entrambe sono classificate **categoria B** in `DATA_SOURCES.md` ("solo uso
+personale non commerciale — rischio accettato esplicitamente dall'utente") e
+portano un flag `LICENSE_RISK = "personal_use_only_betting_platform_clause"`
+leggibile a runtime sulla classe del provider (non un commento) — verificato
+da test dedicati (`backend/tests/test_category_b_providers.py`). Nessuna delle
+due ha uno scraping realmente implementato in questo repository: gli endpoint
+tecnici non sono stati verificati, e implementarli senza prima leggerli
+direttamente violerebbe il principio di questo progetto di non inventare
+endpoint. Se in futuro verranno implementati, il rischio resta quello sopra:
+va accettato consapevolmente dall'utente, non aggirato.
+
 ## Setup — Backend
 
 ```bash

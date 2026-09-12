@@ -30,6 +30,22 @@ class RiskLevelOut(BaseModel):
     alternatives: list[SelectionOut]
 
 
+class CountEstimateOut(BaseModel):
+    """CORNERS/CARDS: probability-only estimate, no market odds available for
+    these markets in the currently integrated data sources — see
+    DATA_SOURCES.md. Never part of the risk ladder (no value/risk computable
+    without a real price)."""
+
+    market_category: str
+    market_label: str
+    line: float
+    probability_over: float
+    probability_under: float
+    fair_odds_over: float
+    fair_odds_under: float
+    note: str
+
+
 class MatchSummaryOut(BaseModel):
     id: int
     competition_code: str
@@ -44,6 +60,7 @@ class MatchDetailOut(MatchSummaryOut):
     analysis_version_id: int | None
     computed_at: datetime | None
     risk_levels: list[RiskLevelOut]
+    additional_estimates: list[CountEstimateOut] = []
 
 
 class MatchTableRowOut(BaseModel):

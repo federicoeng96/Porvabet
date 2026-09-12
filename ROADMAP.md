@@ -33,6 +33,15 @@ riflette cosa è già fatto e cosa manca davvero).
     confermata (hit rate 60%→20% dal Risk 1 al 10), ROI onestamente negativo con
     il modello attuale, calibrazione buona nelle fasce centrali ma overconfident
     nelle code alte.
+11. ✅ **Corner e cartellini**: ingestione reale (colonne HC/AC/HY/AY/HR/AR/HF/AF,
+    prima lette dal parser ma scartate silenziosamente — bug corretto),
+    `PoissonCountModel` dedicato (attacco/difesa, senza correzione arbitro —
+    nessun dato arbitro ancora ingerito), stime esposte via API/frontend come
+    "solo probabilità, nessuna quota" (football-data.co.uk non pubblica quote
+    per questi mercati — limite strutturale, non implementativo, v. MODEL_SPEC.md),
+    backtest reale con hit rate 56-69% ma overconfidence marcata nelle code
+    (v. BACKTEST_SPEC.md) — priorità NB spostata al punto 4 sotto, ora con
+    evidenza reale a supporto invece che solo teorica.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
@@ -58,11 +67,19 @@ scaling/isotonic regression) applicata dopo `fair_odds()` la correggerebbe.
 `risk_score.WEIGHTS` e `value.ALERT_THRESHOLD_*` restano punti di partenza
 espliciti, ora con un backtest reale (punto 10 sopra) su cui ricalibrarli.
 
-### 4. Corner, cartellini, falli (mercati team)
-Richiede: (a) dati storici corner/cartellini per partita (già nel data model,
-`TeamMatchStats`, non ancora ingeriti da nessuna fonte reale), (b) un modello
-dedicato (binomiale negativa, corretto per avversario e — per i cartellini —
-per arbitro tramite `RefereeStats`). Vedi MODEL_SPEC.md.
+### 4. Corner/cartellini: passare a binomiale negativa + feature arbitro
+✅ Dati ingeriti, modello Poisson implementato e backtested su dati reali
+(v. punto 11 sopra). **Prossimo passo concreto, ora supportato da evidenza
+reale**: il backtest mostra overconfidence sostanziale (15-25 punti
+percentuali) nelle probabilità sopra 0.7 su entrambi i mercati — segnale
+diretto di overdispersione non catturata dal Poisson puro. Una binomiale
+negativa (stessa struttura attacco/difesa di `PoissonCountModel`, un
+parametro di dispersione in più) è il fix indicato dai dati, non solo
+un'ipotesi. La correzione arbitro per i cartellini resta bloccata
+dall'assenza di dati arbitro (v. punto 5 sotto per AIA-FIGC/PGMOL).
+Il mercato falli (dati già ingeriti, `TeamMatchStats.fouls_committed`) non
+ha ancora un modello/mercato dedicato — i falli non sono tipicamente un
+mercato scommesse standalone come corner/cartellini, priorità bassa.
 
 ### 5. Feature tattiche misurabili (Matchup Engine)
 Il data model (`TacticalFeature`) e la lista di feature del brief

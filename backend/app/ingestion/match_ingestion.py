@@ -19,6 +19,7 @@ from app.models.core import Competition, Season, Team
 from app.models.enums import MarketCategory
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
+from app.models.stats import TeamMatchStats
 from app.providers.base.dto import HistoricalMatchRecord
 
 COMPETITION_META = {
@@ -104,8 +105,39 @@ def ingest_historical_match(db: Session, record: HistoricalMatchRecord) -> Match
 
     _ingest_1x2_odds(db, match, record.closing_odds_1x2)
     _ingest_ou25_odds(db, match, record.closing_odds_over_under_2_5)
+    _ingest_team_stats(db, match, home_team, record, is_home=True)
+    _ingest_team_stats(db, match, away_team, record, is_home=False)
 
     return match
+
+
+def _ingest_team_stats(
+    db: Session, match: Match, team: Team, record: HistoricalMatchRecord, is_home: bool
+) -> None:
+    """Persists the per-team observed match stats (shots, corners, fouls, cards)
+    that the provider already parses from football-data.co.uk but that were
+    previously discarded here — see ARCHITECTURE.md/ROADMAP.md for context.
+    These are the raw ingredients for corner/card markets; the statistical
+    engine reads them via `app.engine.statistical.corners_cards`, never via
+    this ingestion module directly."""
+    existing = db.scalar(
+        select(TeamMatchStats).where(
+            TeamMatchStats.match_id == match.id, TeamMatchStats.team_id == team.id
+        )
+    )
+    values = {
+        "shots": record.home_shots if is_home else record.away_shots,
+        "shots_on_target": record.home_shots_on_target if is_home else record.away_shots_on_target,
+        "corners": record.home_corners if is_home else record.away_corners,
+        "fouls_committed": record.home_fouls if is_home else record.away_fouls,
+        "yellow_cards": record.home_yellow_cards if is_home else record.away_yellow_cards,
+        "red_cards": record.home_red_cards if is_home else record.away_red_cards,
+    }
+    if existing is not None:
+        for field, value in values.items():
+            setattr(existing, field, value)
+        return
+    db.add(TeamMatchStats(match_id=match.id, team_id=team.id, is_home=is_home, **values))
 
 
 def _get_or_create_market(db: Session, match: Match, category: MarketCategory, label: str) -> Market:

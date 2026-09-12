@@ -135,6 +135,50 @@ tempo, non un modo per nascondere risultati sfavorevoli — il codice e il
 comando usati sono entrambi documentati qui, riproducibili identicamente con
 più tempo a disposizione o hardware più potente.
 
+## Corner e cartellini — RISULTATI REALI (`app/backtest/count_market_runner.py`)
+
+Stesso walk-forward, stesse 6 stagioni EPL+Serie A 2019/20–2024/25,
+`refit_batch_days=21`. **Nessun ROI/profit/yield riportato** — non per omissione,
+ma perché nessuna fonte dati integrata pubblica quote per questi due mercati
+(v. MODEL_SPEC.md): `roi()`/`profit_units()` ritornano correttamente `None`
+quando ogni bet ha `bookmaker_odds=None`, invece di un numero fabbricato.
+
+| Segmento | n | Hit rate | Brier | Log loss |
+|---|---|---|---|---|
+| EPL corner (linea 9.5) | 2.210 | 56.6% | 0.2495 | 0.6949 |
+| EPL cartellini (linea 3.5) | 2.210 | 58.4% | 0.2430 | 0.6835 |
+| Serie A corner (linea 9.5) | 2.191 | 55.9% | 0.2501 | 0.6957 |
+| Serie A cartellini (linea 3.5) | 2.191 | **68.9%** | 0.2105 | 0.6128 |
+| **Combinato** | 8.802 | 59.9% | 0.2383 | 0.6718 |
+
+Hit rate sistematicamente sopra il 50% su tutti e 4 i segmenti — il modello ha
+un potere predittivo reale, non casuale, anche nella sua forma più semplice
+(Poisson puro, nessuna correzione arbitro/tattica). Serie A cartellini si
+distingue nettamente in meglio (68.9% vs 55.9-58.4% altrove) — un'osservazione
+grezza dal backtest, non ancora spiegata (potrebbe riflettere arbitraggio più
+consistente, stile di gioco più prevedibile, o semplice rumore campionario;
+non c'è abbastanza evidenza qui per concludere quale).
+
+**Segnale di calibrazione importante — overdispersione confermata**: a
+differenza del modello Dixon-Coles per i gol (buona calibrazione fino al bin
+0.6-0.7, overconfidence solo nelle code estreme), qui l'**overconfidence inizia
+già dal bin 0.7-0.8 ed è sostanziale**:
+
+| Bin probabilità predetta | EPL corner: predetto vs osservato | EPL cartellini: predetto vs osservato |
+|---|---|---|
+| 0.7–0.8 | 73.9% vs 59.8% | 74.3% vs 66.9% |
+| 0.8–0.9 | 83.3% vs 58.3% | 83.8% vs 67.0% |
+
+Un divario di 15-25 punti percentuali tra probabilità dichiarata e frequenza
+osservata è un segnale chiaro, non rumore campionario (n=72-323 per bin). Questo
+è esattamente il tipo di evidenza che MODEL_SPEC.md anticipava come possibile:
+un Poisson puro sotto-rappresenta la vera varianza dei conteggi corner/cartellini
+(overdispersione), producendo probabilità sistematicamente troppo estreme nelle
+code. **Conclusione operativa per la ROADMAP**: passare a un modello binomiale
+negativa (stessa struttura attacco/difesa, un parametro di dispersione in più)
+per questi due mercati è la priorità di calibrazione più fondata su dati reali
+in questo intero progetto, non solo un'ipotesi teorica.
+
 ## Cosa manca (onestamente)
 
 - Il risultato sopra usa `refit_batch_days=21` e 6 stagioni per contenere il

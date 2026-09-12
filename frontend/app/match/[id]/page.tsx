@@ -111,6 +111,28 @@ export default function MatchDetailPage() {
           {current.alternatives.map((alt, i) => renderSelection(alt, `alt-${i}`, `Alternativa ${i + 1}`))}
         </>
       )}
+
+      {match.additional_estimates.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 14, marginTop: 24 }}>Stime aggiuntive (senza quota di mercato)</h2>
+          {match.additional_estimates.map((est) => (
+            <div className="detail-card" key={est.market_category}>
+              <div style={{ fontSize: 16, fontWeight: 700, margin: "4px 0" }}>
+                {est.market_label} (linea {est.line})
+              </div>
+              <div>
+                Over: {(est.probability_over * 100).toFixed(1)}% (quota fair {est.fair_odds_over.toFixed(2)})
+              </div>
+              <div>
+                Under: {(est.probability_under * 100).toFixed(1)}% (quota fair {est.fair_odds_under.toFixed(2)})
+              </div>
+              <p className="muted" style={{ fontStyle: "italic" }}>
+                {est.note}
+              </p>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

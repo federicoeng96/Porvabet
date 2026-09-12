@@ -4,11 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.engine.decision.analysis_runner import InsufficientDataError, run_analysis_for_match
+from app.engine.decision.count_market_estimates import NO_ODDS_NOTE
 from app.models.market import Market, MarketOutcome
 from app.models.match import Match
 from app.models.prediction import Alert, AnalysisVersion, Prediction, RiskSelection
 from app.schemas.analysis import (
     AlertOut,
+    CountEstimateOut,
     MatchDetailOut,
     MatchSummaryOut,
     MatchTableRowOut,
@@ -47,6 +49,47 @@ def _selection_out(db: Session, prediction: Prediction, rationale: str) -> Selec
             else None
         ),
     )
+
+
+def _count_estimates_out(db: Session, analysis_version_id: int) -> list[CountEstimateOut]:
+    """CORNERS/CARDS Prediction rows have bookmaker_odds=None by construction
+    (see count_market_estimates.py) — that's exactly how we identify them here,
+    rather than a separate flag."""
+    predictions = db.scalars(
+        select(Prediction).where(
+            Prediction.analysis_version_id == analysis_version_id,
+            Prediction.bookmaker_odds.is_(None),
+        )
+    ).all()
+
+    by_market: dict[int, list[Prediction]] = {}
+    for pred in predictions:
+        outcome = db.get(MarketOutcome, pred.market_outcome_id)
+        by_market.setdefault(outcome.market_id, []).append(pred)
+
+    out = []
+    for market_id, preds in by_market.items():
+        market = db.get(Market, market_id)
+        over_pred = next(
+            p for p in preds if db.get(MarketOutcome, p.market_outcome_id).code == "OVER"
+        )
+        under_pred = next(
+            p for p in preds if db.get(MarketOutcome, p.market_outcome_id).code == "UNDER"
+        )
+        category = market.category.value if hasattr(market.category, "value") else market.category
+        out.append(
+            CountEstimateOut(
+                market_category=category,
+                market_label=market.label,
+                line=market.line,
+                probability_over=over_pred.probability,
+                probability_under=under_pred.probability,
+                fair_odds_over=over_pred.fair_odds,
+                fair_odds_under=under_pred.fair_odds,
+                note=NO_ODDS_NOTE,
+            )
+        )
+    return out
 
 
 def _match_summary(db: Session, match: Match, has_analysis: bool) -> MatchSummaryOut:
@@ -153,6 +196,7 @@ def get_match_detail(match_id: int, db: Session = Depends(get_db)):
         analysis_version_id=analysis_version.id,
         computed_at=analysis_version.computed_at,
         risk_levels=risk_levels_out,
+        additional_estimates=_count_estimates_out(db, analysis_version.id),
     )
 
 

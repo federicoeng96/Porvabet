@@ -11,6 +11,42 @@
 
 Ogni scelta è stata verificata eseguibile in questo ambiente (Postgres 16 e Node 22 sono risultati già installati; le dipendenze Python/JS si installano da PyPI/npm, entrambi raggiungibili).
 
+## ⚠️ Limite attivo: nessun value/edge reale contro ePlay24
+
+**Il sistema oggi stima probabilità e quote fair, ma NON può calcolare un
+value/edge reale rispetto al mercato ePlay24.** Non è un dettaglio implementativo
+rimandato: è stato verificato tecnicamente (v. `DATA_SOURCES.md`, sezione
+ePlay24) che il sito blocca ogni richiesta automatizzata a livello di
+infrastruttura edge (Akamai) — homepage, robots.txt e persino la pagina dei
+propri termini di servizio restituiscono tutti HTTP 403, sia da rete diretta
+sia tramite `WebFetch`. Non esiste inoltre alcuna API pubblica o feed
+documentato, né un aggregatore di quote di terze parti che copra ePlay24.
+
+Conseguenza architetturale: finché `EPlay24OddsProvider` resta
+un'interfaccia senza implementazione (v. `app/providers/eplay24/provider.py`),
+questo progetto è, di fatto, **un motore di stima (probabilità + quota fair),
+non un motore di value betting contro ePlay24 specificamente**. Il "value" e
+gli alert mostrati oggi nell'interfaccia sono sempre calcolati contro le
+quote della fonte realmente disponibile (football-data.co.uk — quote reali di
+altri bookmaker, mai simulate), e sono **etichettati esplicitamente con il nome
+del bookmaker reale** (mai "ePlay24") sia nell'API (`bookmaker_name` in ogni
+`Prediction`/`SelectionOut`) sia nel frontend (colonna quota + banner
+dedicato). Nessuna quota di un altro bookmaker viene mai presentata come "quota
+ePlay24" o usata come sostituto silenzioso — se in futuro servisse un proxy per
+testare il Value Engine con dati storici, andrebbe comunque etichettato
+esplicitamente come tale (es. "TEST — quota non ePlay24"), non semplicemente
+attribuito a "quota bookmaker" generica.
+
+**Lo stesso limite si applica, per una ragione diversa, a corner e
+cartellini**: qui non è ePlay24 a essere irraggiungibile — è che **nessuna
+fonte dati integrata (nemmeno football-data.co.uk) pubblica quote per questi
+due mercati** (verificato contro lo schema colonne reale — solo 1X2, O/U 2.5
+gol e handicap asiatico hanno prezzi). Il modello (`PoissonCountModel`, v.
+MODEL_SPEC.md) produce comunque una probabilità reale, esposta via API/
+frontend come stima esplicitamente "senza quota" (`additional_estimates`,
+mai nella risk ladder) — stesso principio del punto sopra: mostrare il lavoro
+di stima senza fingere un value che nessun prezzo di mercato reale supporta.
+
 ## Principio cardine: separazione Provider → Ingestion → Engine → API
 
 ```
@@ -97,10 +133,11 @@ backend/
     providers/       # 5 interfacce astratte + implementazioni per categoria (v. DATA_SOURCES.md)
     ingestion/        # mapping DTO provider -> righe DB, idempotente
     engine/
-      statistical/    # Dixon-Coles Poisson
-      decision/       # fair odds, value, risk score, selezione, riconciliazione formazioni
+      statistical/    # Dixon-Coles Poisson (1X2/O-U/BTTS) + PoissonCountModel (corner/cartellini)
+      decision/       # fair odds, value, risk score, selezione, riconciliazione formazioni,
+                      # count_market_estimates.py (stime corner/cartellini SENZA value — v. sotto)
       intelligence/   # segnali qualitativi (interfaccia, non ancora popolata — v. ROADMAP)
-    backtest/         # runner walk-forward + metriche
+    backtest/         # runner walk-forward + metriche (gol) + count_market_runner.py (corner/cartellini)
     api/              # FastAPI routers
   alembic/            # migrazioni
   tests/              # pytest, dati sintetici etichettati esplicitamente
@@ -128,3 +165,29 @@ API e frontend. Le altre fonti (API-Football, understat, fbref) restano
 verificate solo strutturalmente (codice + test unitari), non con una vera
 ingestione in questa sessione — v. DATA_SOURCES.md per lo stato preciso di
 ciascuna.
+
+## ⚠️ Dipendenza aperta: accesso di rete dell'ambiente di ESECUZIONE reale
+
+Quanto sopra riguarda **solo l'ambiente sandbox di sviluppo** usato per
+scrivere e verificare questo codice. **Non è stato verificato — e non può
+esserlo da questa sessione — se l'ambiente dove il sistema girerà
+effettivamente in uso normale** (il server/macchina/container che l'utente
+sceglierà per il deploy: locale, VPS, servizio cloud, ecc.) abbia accesso di
+rete in uscita verso football-data.co.uk, understat.com, fbref.com o le altre
+fonti. Questo dipende interamente da come e dove l'utente decide di eseguire
+il sistema in produzione, una scelta non ancora fatta/comunicata in questo
+progetto. Non va quindi dato per scontato che "funziona in sandbox dopo il
+cambio di policy" implichi "funzionerà ovunque verrà deployato" — sono due
+ambienti distinti con policy di rete potenzialmente diverse (un server
+aziendale con firewall restrittivo, un container CI, un servizio PaaS con
+allowlist propria, ecc. possono tutti bloccare l'uscita verso questi domini
+indipendentemente da cosa succede qui).
+
+**Azione raccomandata prima di considerare l'ingestione "pronta per la
+produzione"**: eseguire un semplice test di connettività
+(`curl -sSL -o /dev/null -w "%{http_code}" https://www.football-data.co.uk/`)
+dall'ambiente di deploy scelto, prima di fare affidamento
+sull'ingestione automatica pianificata (es. un cron job) — se quell'ambiente
+blocca l'uscita, l'ingestione fallirà silenziosamente in produzione anche se
+ha funzionato qui. Questo è un rischio operativo aperto, non un problema di
+codice: nessuna riga di questo progetto può risolverlo da sola.
