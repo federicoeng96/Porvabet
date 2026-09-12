@@ -90,9 +90,26 @@ Poisson vs NB della distribuzione stessa.
 ## Probabilità → quota fair → value
 
 - `fair_odds = 1 / probability` (`app/engine/decision/fair_odds.py`) — formula
-  pura, nessun aggiustamento nascosto. Raffinamenti (calibrazione, blend con
-  probabilità di mercato) sono un passo esplicito e separato, non ancora
-  implementato: la pipeline attuale usa la probabilità grezza del modello.
+  pura, nessun aggiustamento nascosto. Un blend con la probabilità implicita
+  di mercato resta un passo esplicito e separato, non ancora implementato.
+- **Calibrazione post-hoc (Platt/isotonica) — testata, non attivata.**
+  `app/engine/decision/calibration.py` implementa entrambe
+  (`PlattCalibrator`, `IsotonicCalibrator` via PAVA) e sono state
+  backtestate senza leakage (`app/backtest/calibration_runner.py`, split
+  temporale 80/20) su tutti gli 8 segmenti reali già backtestati
+  (EPL+Serie A × MATCH_RESULT/TOTAL_GOALS/CORNERS/CARDS). Risultato: nessuna
+  delle due migliora la calibrazione nelle fasce alte in modo consistente —
+  un miglioramento reale su Serie A MATCH_RESULT, ma peggioramenti netti su
+  EPL CARDS/TOTAL_GOALS/MATCH_RESULT nello stesso esperimento (v.
+  BACKTEST_SPEC.md per la tabella completa). **Decisione basata sui numeri**:
+  la pipeline usa ancora la probabilità grezza del modello, non calibrata —
+  non per mancanza di un'implementazione, ma perché quella implementazione,
+  testata, non ha dimostrato di migliorare le cose. Questo è il terzo
+  tentativo indipendente (dopo binomiale negativa e più stagioni di storia)
+  che non risolve l'overconfidence nelle code alte in modo consistente —
+  prova indiretta ma convergente che il problema è nella struttura media
+  (feature mancanti), non nella forma della distribuzione o in una
+  trasformazione scalare post-hoc.
 - `value = probability * bookmaker_odds - 1` (EV per unità puntata) — scelta
   sugli altri possibili indicatori (es. rapporto tra quote) perché è la
   grandezza che ROI/yield del backtest già usano nativamente: un'unica

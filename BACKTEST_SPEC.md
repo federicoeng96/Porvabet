@@ -297,19 +297,85 @@ condivisa, o l'aggiunta delle feature mancanti prima di ririprovare NB — non
 "binomiale negativa in generale" come se fosse già stata smentita in modo
 definitivo.
 
+## Calibrazione post-hoc (Platt scaling / isotonica) — confronto reale, decisione basata sui dati
+
+`app/engine/decision/calibration.py` implementa entrambe le tecniche come
+opzioni indipendenti e testabili (`PlattCalibrator`, `IsotonicCalibrator`, PAVA
+senza dipendenza da scikit-learn). `app/backtest/calibration_runner.py` le
+valuta senza leakage: fit su una porzione (temporalmente) precedente delle
+predizioni già risolte dal walk-forward, valutazione sulla porzione successiva
+tenuta da parte (split 80/20 per tempo, non casuale — la stessa disciplina
+"mai vedere il futuro" degli altri backtest).
+
+Eseguito su tutti gli 8 segmenti già backtestati sopra (EPL+Serie A ×
+{MATCH_RESULT, TOTAL_GOALS, CORNERS, CARDS}, 10 stagioni):
+
+| Segmento | n test | Brier raw | Brier Platt | Brier isotonica |
+|---|---|---|---|---|
+| EPL MATCH_RESULT | 5.593 | 0.1903 | 0.1908 (peggio) | 0.1906 (peggio) |
+| EPL TOTAL_GOALS | 1.820 | 0.2391 | 0.2401 (peggio) | 0.2390 (~pari) |
+| EPL CORNERS | 742 | 0.2384 | 0.2393 (peggio) | 0.2386 (~pari) |
+| EPL CARDS | 742 | 0.2411 | 0.2409 (~pari) | 0.2406 (~pari) |
+| Serie A MATCH_RESULT | 5.592 | 0.1977 | 0.1978 (~pari) | 0.1976 (~pari) |
+| Serie A TOTAL_GOALS | 1.816 | 0.2455 | 0.2447 (meglio) | 0.2461 (peggio) |
+| Serie A CORNERS | 741 | 0.2421 | 0.2418 (~pari) | 0.2422 (~pari) |
+| Serie A CARDS | 741 | 0.2296 | 0.2320 (peggio) | 0.2300 (~pari) |
+
+Nessuno dei due metodi vince in modo sistematico: Platt migliora 3/8 segmenti
+e peggiora 5/8; isotonica migliora/pareggia 3/8 e peggiora 5/8 — e le
+differenze sono quasi ovunque nell'ordine di 0.0001-0.0025 (rumore, non un
+effetto). Il test che conta davvero è la calibrazione nelle fasce alte
+(0.7+), dove il problema è documentato:
+
+| Segmento | Bin | Gap raw | Gap Platt | Gap isotonica |
+|---|---|---|---|---|
+| EPL MATCH_RESULT | 0.8–0.9 (n=64) | −0.044 | **−0.162** | −0.064 |
+| EPL TOTAL_GOALS | 0.7–0.8 (n=32) | −0.078 | **−0.286** | −0.119 |
+| EPL CARDS | 0.7–0.8 (n=87) | +0.118 | **−0.278** | **−0.275** |
+| Serie A MATCH_RESULT | 0.7–0.8 (n=120) | +0.109 | +0.070 | **+0.029** |
+| Serie A MATCH_RESULT | 0.8–0.9 (n=30) | +0.161 | +0.119 | **+0.043** |
+| Serie A CARDS | 0.8–0.9 (n=57) | +0.077 | **+0.142** | n/a |
+
+(Tabella completa nell'output dello script, non incluso nel repo — stesso
+formato degli script ad-hoc precedenti.) La direzione dell'effetto è
+**incoerente tra segmenti**: per Serie A MATCH_RESULT l'isotonica dimezza
+davvero il gap (un miglioramento reale, non rumore, su n=120-30). Ma per EPL
+CARDS/TOTAL_GOALS/MATCH_RESULT entrambi i metodi **peggiorano** nettamente il
+gap, a volte capovolgendo il segno (da overconfidence a underconfidence). Nei
+mercati corner/cartellini molti bin alti finiscono vuoti dopo la
+trasformazione (`n/a` in tabella): il fit su un train set già ridotto
+(n≈2.960-2.970 per il train, con ancora meno osservazioni nelle code più
+estreme) produce trasformazioni aggressive (es. Platt `a=0.247` per EPL
+corner) che comprimono quasi tutte le probabilità lontano dagli estremi,
+"risolvendo" l'overconfidence spostando il problema fuori dal bin osservabile
+— non un fix genuino.
+
+**Conclusione onesta, decisione basata sui numeri, non sull'eleganza del
+metodo**: né Platt scaling né la regressione isotonica vengono attivate in
+produzione. Nessuno dei due migliora la calibrazione nelle fasce alte in modo
+consistente tra segmenti — un vero miglioramento (Serie A MATCH_RESULT) e
+peggioramenti netti altrove (EPL CARDS/TOTAL_GOALS) nello stesso esperimento.
+`fit_platt_calibration`/`fit_isotonic_calibration` restano nel codice, testati
+e funzionanti, non cancellati — un'ipotesi futura più mirata (fit per singolo
+bin con soglia minima di osservazioni, o calibrazione fittata solo dove il
+segmento ha abbastanza dati) non è stata ancora provata.
+
+Questo è il **terzo** tentativo indipendente di risolvere l'overconfidence
+nelle code alte che non ci riesce in modo consistente (dopo: binomiale
+negativa per corner/cartellini, più stagioni di storia per i gol) — un
+pattern che rafforza, non indebolisce, l'ipotesi già in ROADMAP.md: il
+problema probabilmente non è la forma della distribuzione, né la quantità di
+dati, né una trasformazione scalare post-hoc, ma **feature esplicative
+mancanti nella struttura media** (arbitro per i cartellini, tattica per i
+corner, feature aggiuntive non ancora identificate per i gol/1X2).
+
 ## Cosa manca (onestamente)
 
-- Il risultato sopra usa `refit_batch_days=21` e 6 stagioni per contenere il
-  tempo di esecuzione in questa sessione — un run con la finestra di refit
-  di default (7 giorni) su tutte le 10 stagioni disponibili darebbe una stima
-  leggermente più precisa (più rifit = modello più aggiornato in ogni
-  momento) ma è computazionalmente più oneroso; non è stato eseguito qui per
-  limiti di tempo, non per scelta di merito.
-- I risultati sopra non sono ancora persistiti in una riga `Backtest` (tabella
-  già presente nello schema) — sono stati calcolati con uno script ad-hoc
-  (non incluso nel repo) e riportati qui manualmente. Collegare
-  `run_walk_forward_backtest` a una scrittura `Backtest` automatica resta un
-  passo di implementazione futuro (v. ROADMAP).
+- ✅ Il refit più frequente (7 giorni, default) su tutte le 10 stagioni è
+  stato eseguito (v. sezione sopra) — non più un limite di questa sessione.
+- ✅ I risultati sono ora persistiti in righe `Backtest` reali
+  (`scripts/persist_backtest_results.py`, v. ROADMAP.md punto 1) — non più
+  solo riportati a mano.
 - Metriche per player props, corner, cartellini: bloccate dall'assenza dei
   modelli corrispondenti (v. MODEL_SPEC.md).
 - Distribuzione di probabilità e stabilità nel tempo (richiesta dal brief) —

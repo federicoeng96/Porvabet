@@ -52,6 +52,13 @@ riflette cosa è già fatto e cosa manca davvero).
     scritte in DB per EPL+Serie A × {MATCH_RESULT, TOTAL_GOALS, CORNERS,
     CARDS}, dagli stessi backtest reali già in BACKTEST_SPEC.md (v. punto 1
     sotto per il dettaglio e per cosa resta aperto).
+14. ✅ **`model_reliability` reale** (`app/engine/decision/reliability.py`):
+    non più il placeholder 0.5, deriva dal gap di calibrazione della riga
+    `Backtest` più recente per mercato/competizione, fail-conservative (0.0)
+    quando non stimabile con confidenza — mai un numero indovinato.
+15. ✅ **Calibrazione post-hoc (Platt/isotonica) testata, non attivata**
+    (v. punto 3 sotto per il dettaglio): terzo tentativo indipendente che non
+    risolve l'overconfidence nelle code alte in modo consistente.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
@@ -90,12 +97,20 @@ conclusione già raggiunta per corner/cartellini (punto 4 sotto): serve
 calibrazione post-hoc (punto 3 sotto) o feature aggiuntive, non solo più dati
 di allenamento.
 
-### 3. Calibrazione dei pesi/soglie/probabilità
-Il backtest reale mostra overconfidence nelle probabilità alte (bin 0.9-1.0:
-predetto 92.6%, osservato 71.4%) — una calibrazione post-hoc (Platt
-scaling/isotonic regression) applicata dopo `fair_odds()` la correggerebbe.
+### 3. ✅ Calibrazione dei pesi/soglie/probabilità — Platt/isotonica testate, non attivate
+Entrambe implementate (`app/engine/decision/calibration.py`) e backtestate
+senza leakage su tutti gli 8 segmenti reali (v. BACKTEST_SPEC.md). Risultato
+onesto: nessuna delle due migliora la calibrazione nelle fasce alte in modo
+consistente tra segmenti — un miglioramento reale (Serie A MATCH_RESULT) e
+peggioramenti netti altrove (EPL CARDS/TOTAL_GOALS) nello stesso esperimento.
+**Decisione basata sui numeri**: nessuna delle due attivata in produzione;
+`fair_odds()` continua a usare la probabilità grezza del modello. Terzo
+tentativo indipendente (dopo NB e più stagioni) che non risolve
+l'overconfidence — rafforza l'ipotesi che il problema sia nella struttura
+media (feature mancanti), non nella forma/calibrazione della probabilità.
 `risk_score.WEIGHTS` e `value.ALERT_THRESHOLD_*` restano punti di partenza
-espliciti, ora con un backtest reale (punto 10 sopra) su cui ricalibrarli.
+espliciti, non ancora ricalibrati sul backtest reale (nessuna analisi
+tentata finora su questo punto specifico — resta aperto).
 
 ### 4. Corner/cartellini: la binomiale negativa non basta — serve la feature arbitro (e altre)
 ✅ Testata (v. punto 12 sopra): non risolve l'overconfidence nelle code alte in
