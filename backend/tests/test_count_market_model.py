@@ -1,12 +1,22 @@
-"""Tests the Poisson count model (corners/cards) against SYNTHETIC data —
-checking statistical properties, not any specific real-world figure."""
+"""Tests the count models (corners/cards) against SYNTHETIC data — checking
+statistical properties, not any specific real-world figure. Parametrized
+across both PoissonCountModel and NegativeBinomialCountModel since they share
+the same public interface (fit/expected_counts/team_total_probabilities/
+match_total_probabilities) — see BACKTEST_SPEC.md for which one production
+actually uses and why."""
 
 import random
 from datetime import date, timedelta
 
 import pytest
 
-from app.engine.statistical.count_market_model import CountMatchInput, PoissonCountModel
+from app.engine.statistical.count_market_model import (
+    CountMatchInput,
+    NegativeBinomialCountModel,
+    PoissonCountModel,
+)
+
+MODEL_CLASSES = [PoissonCountModel, NegativeBinomialCountModel]
 
 
 def _synthetic_matches(seed: int = 7, n: int = 300) -> list[CountMatchInput]:
@@ -25,45 +35,79 @@ def _synthetic_matches(seed: int = 7, n: int = 300) -> list[CountMatchInput]:
     return matches
 
 
-@pytest.fixture()
-def fitted_model() -> PoissonCountModel:
-    matches = _synthetic_matches()
-    model = PoissonCountModel()
+def _fit(model_cls, matches=None):
+    matches = matches or _synthetic_matches()
+    model = model_cls()
     model.fit(matches, as_of=matches[-1].match_date + timedelta(days=1))
     return model
 
 
-def test_attacking_team_has_higher_attack_rating(fitted_model):
-    assert fitted_model.params.attack["Attacking"] > fitted_model.params.attack["Defensive"]
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_attacking_team_has_higher_attack_rating(model_cls):
+    model = _fit(model_cls)
+    assert model.params.attack["Attacking"] > model.params.attack["Defensive"]
 
 
-def test_team_total_probabilities_sum_to_one(fitted_model):
-    probs = fitted_model.team_total_probabilities("Attacking", "Defensive", side="home", line=5.5)
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_team_total_probabilities_sum_to_one(model_cls):
+    model = _fit(model_cls)
+    probs = model.team_total_probabilities("Attacking", "Defensive", side="home", line=5.5)
     assert sum(probs.values()) == pytest.approx(1.0, abs=1e-6)
 
 
-def test_match_total_probabilities_sum_to_one(fitted_model):
-    probs = fitted_model.match_total_probabilities("Attacking", "Defensive", line=9.5)
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_match_total_probabilities_sum_to_one(model_cls):
+    model = _fit(model_cls)
+    probs = model.match_total_probabilities("Attacking", "Defensive", line=9.5)
     assert sum(probs.values()) == pytest.approx(1.0, abs=1e-6)
 
 
-def test_stronger_attacking_team_more_likely_over(fitted_model):
-    strong = fitted_model.team_total_probabilities("Attacking", "Defensive", side="home", line=5.5)
-    weak = fitted_model.team_total_probabilities("Defensive", "Attacking", side="home", line=5.5)
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_stronger_attacking_team_more_likely_over(model_cls):
+    model = _fit(model_cls)
+    strong = model.team_total_probabilities("Attacking", "Defensive", side="home", line=5.5)
+    weak = model.team_total_probabilities("Defensive", "Attacking", side="home", line=5.5)
     assert strong["OVER"] > weak["OVER"]
 
 
-def test_fit_requires_at_least_one_match():
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_fit_requires_at_least_one_match(model_cls):
     with pytest.raises(ValueError):
-        PoissonCountModel().fit([])
+        model_cls().fit([])
 
 
-def test_predict_before_fit_raises():
-    model = PoissonCountModel()
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_predict_before_fit_raises(model_cls):
+    model = model_cls()
     with pytest.raises(RuntimeError):
         model.expected_counts("A", "B")
 
 
-def test_predict_unknown_team_raises(fitted_model):
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES)
+def test_predict_unknown_team_raises(model_cls):
+    model = _fit(model_cls)
     with pytest.raises(ValueError):
-        fitted_model.expected_counts("Attacking", "NeverSeenTeam")
+        model.expected_counts("Attacking", "NeverSeenTeam")
+
+
+def test_negative_binomial_recovers_positive_dispersion_on_overdispersed_data():
+    """On data simulated with extra variance beyond a Poisson's mean=variance
+    assumption, the fitted alpha should be meaningfully positive (indicating
+    the model detects overdispersion), not collapse to ~0 (which would mean
+    "no better than Poisson")."""
+    rng = random.Random(42)
+    teams = ["A", "B", "C", "D"]
+    rate = {t: rng.uniform(3.0, 8.0) for t in teams}
+    start = date(2022, 8, 1)
+    matches = []
+    for i in range(250):
+        home, away = rng.sample(teams, 2)
+        # Wide gaussian noise well beyond Poisson variance = mean, to simulate
+        # genuine overdispersion.
+        home_count = max(0, int(rng.gauss(rate[home], 4)))
+        away_count = max(0, int(rng.gauss(rate[away], 4)))
+        matches.append(CountMatchInput(home, away, home_count, away_count, start + timedelta(days=i)))
+
+    model = NegativeBinomialCountModel()
+    params = model.fit(matches, as_of=matches[-1].match_date + timedelta(days=1))
+    assert params.alpha > 0.05

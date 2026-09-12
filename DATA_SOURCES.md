@@ -291,6 +291,30 @@ prove (come nella verifica iniziale, fatta senza accesso di rete diretto) —
 
 ---
 
+## Fonti valutate e chiuse senza audit legale (gap dati non più esistente)
+
+### diretta.it (e gruppo Flashscore/Livescore)
+
+**Chiuso definitivamente — non serve, non verrà implementato.** Era stata
+proposta come possibile fonte per corner/cartellini/falli partita-per-partita.
+Nel frattempo questi tre dati **sono stati ingeriti in bulk da
+football-data.co.uk** (colonne HC/AC/HY/AY/HR/AR/HF/AF, v. sopra) — l'intero
+gap che diretta.it avrebbe dovuto colmare non esiste più. Di conseguenza:
+- **Nessun audit legale (ToS/robots.txt/rate limit) è stato condotto** su
+  diretta.it — non è quindi classificato in nessuna delle categorie A/B/C
+  usate altrove in questo documento, e non va interpretato come "verificato
+  e non utilizzabile": è semplicemente **non necessario**, quindi mai valutato.
+- **Nessuno scraper o modulo di verifica è stato costruito** per questa fonte,
+  coerentemente con la regola di questo progetto di non costruire accesso a
+  una fonte prima di un audit esplicito.
+- Se in futuro servissero dati che football-data.co.uk non copre (eventi
+  minuto per minuto, tiri, possesso, sostituzioni), diretta.it tornerebbe a
+  essere un candidato — ma richiederebbe l'audit completo (ToS, robots.txt,
+  rate limit, classificazione A/B/C) da zero, non un semplice via libera
+  basato su questa nota.
+
+---
+
 ## Riepilogo implementazione (anche in `app/ingestion/source_registry.py`)
 
 | Fonte | Categoria | Implementata | Note |

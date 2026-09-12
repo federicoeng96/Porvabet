@@ -171,13 +171,78 @@ già dal bin 0.7-0.8 ed è sostanziale**:
 
 Un divario di 15-25 punti percentuali tra probabilità dichiarata e frequenza
 osservata è un segnale chiaro, non rumore campionario (n=72-323 per bin). Questo
-è esattamente il tipo di evidenza che MODEL_SPEC.md anticipava come possibile:
-un Poisson puro sotto-rappresenta la vera varianza dei conteggi corner/cartellini
-(overdispersione), producendo probabilità sistematicamente troppo estreme nelle
-code. **Conclusione operativa per la ROADMAP**: passare a un modello binomiale
-negativa (stessa struttura attacco/difesa, un parametro di dispersione in più)
-per questi due mercati è la priorità di calibrazione più fondata su dati reali
-in questo intero progetto, non solo un'ipotesi teorica.
+sembrava, a prima vista, il tipo di evidenza che indica overdispersione — **la
+sezione seguente mette questa ipotesi alla prova con un vero confronto, invece
+di limitarsi a passare al modello "più sofisticato" per assunzione.**
+
+## Poisson vs binomiale negativa — confronto reale, decisione basata sui dati
+
+`NegativeBinomialCountModel` (stessa struttura attacco/difesa/vantaggio-casa di
+`PoissonCountModel`, più un parametro di dispersione `alpha` condiviso fittato
+via MLE) è stato implementato e backtestato **sugli stessi identici dati,
+stesso periodo, stesso protocollo walk-forward** già usati sopra per il
+Poisson — confronto pulito, non contaminato da differenze di scope.
+
+| Segmento | Poisson Brier | NB Brier | Poisson LogLoss | NB LogLoss |
+|---|---|---|---|---|
+| EPL corner | 0.2495 | 0.2481 | 0.6949 | 0.6909 |
+| EPL cartellini | 0.2430 | 0.2429 | 0.6835 | 0.6834 |
+| Serie A corner | 0.2501 | 0.2480 | 0.6957 | 0.6906 |
+| Serie A cartellini | 0.2105 | *non completato* | 0.6128 | *non completato* |
+
+(Serie A cartellini con NB non è stato completato: il fit è risultato
+insolitamente lento su questo segmento specifico — probabilmente per via
+dell'alto numero di osservazioni nelle fasce alte, n=838 e n=382 nei bin
+0.7-0.8 e 0.8-0.9 — e l'esecuzione è stata interrotta dopo oltre 12 minuti per
+restare in tempi ragionevoli in questa sessione. I 3 segmenti completati sono
+comunque sufficienti per un giudizio, e questo limite è dichiarato qui invece
+di essere nascosto.)
+
+**Calibrazione nelle fasce alte — il vero test, non solo Brier/log loss aggregati:**
+
+| Segmento | Bin | Poisson: predetto/osservato (gap) | NB: predetto/osservato (gap) |
+|---|---|---|---|
+| EPL corner | 0.7–0.8 | 73.9%/59.8% (+0.141) | 74.1%/55.2% (**+0.188**) |
+| EPL corner | 0.8–0.9 | 83.3%/58.3% (+0.250) | 84.4%/62.1% (+0.223) |
+| EPL corner | 0.9–1.0 | 92.6%/83.3% (+0.092) | 91.8%/81.8% (+0.100) |
+| EPL cartellini | 0.7–0.8 | 74.3%/66.9% (+0.074) | 74.3%/67.0% (+0.073) |
+| EPL cartellini | 0.8–0.9 | 83.8%/67.0% (+0.167) | 83.8%/67.0% (+0.167) |
+| EPL cartellini | 0.9–1.0 | 95.9%/50.0% (+0.459) | 95.9%/50.0% (+0.459) |
+| Serie A corner | 0.7–0.8 | 73.7%/64.8% (+0.089) | 74.0%/66.2% (+0.077) |
+| Serie A corner | 0.8–0.9 | 83.8%/67.1% (+0.167) | 83.4%/62.7% (**+0.207**) |
+| Serie A corner | 0.9–1.0 | 92.4%/75.0% (+0.174) | 92.7%/75.0% (+0.177) |
+
+**Conclusione onesta: la binomiale negativa NON risolve il problema di
+overconfidence nelle code alte.** I numeri, non un'aspettativa a priori,
+dicono questo:
+
+- Su Brier score e log loss **complessivi**, NB è marginalmente migliore in
+  tutti e 3 i segmenti completati (differenze dell'ordine di 0.001-0.005) —
+  un miglioramento reale ma piccolo, non trasformativo.
+- Sulla **calibrazione nelle fasce alte** (l'obiettivo specifico di questo
+  fix), il quadro è **misto, senza un pattern consistente**: NB migliora in
+  alcuni bin (es. Serie A corner 0.7-0.8: 0.089→0.077), peggiora in altri (es.
+  EPL corner 0.7-0.8: 0.141→**0.188**; Serie A corner 0.8-0.9: 0.167→**0.207**),
+  e per i cartellini EPL è **sostanzialmente identica** bin per bin — segno che
+  l'ottimizzatore ha convergiuto a un `alpha` vicino a zero (nessuna
+  overdispersione utile da catturare in quel segmento specifico).
+- NB produce sistematicamente **meno osservazioni nelle fasce di probabilità
+  alta** (es. EPL corner 0.7-0.8: n=301 con Poisson, n=172 con NB) — il
+  parametro di dispersione "smussa" le stime verso probabilità meno estreme,
+  come atteso, ma questo da solo non basta a renderle meglio calibrate.
+
+**Decisione: si mantiene `PoissonCountModel` in produzione (nessuna
+sostituzione)**, non perché "già scelto" ma perché il backtest non giustifica
+il cambio: un parametro di dispersione condiviso fra tutte le squadre non
+compensa un'overconfidence che sembra derivare più dalla struttura media
+(attacco/difesa) stessa — probabilmente per l'assenza di feature esplicative
+note (arbitro per i cartellini, stile/tattica per i corner, v. MODEL_SPEC.md)
+— che dalla forma della distribuzione di conteggio. `NegativeBinomialCountModel`
+resta nel codice, testato e funzionante (non cancellato): un'ipotesi futura
+onesta da riprovare è una dispersione **per singola squadra** invece che
+condivisa, o l'aggiunta delle feature mancanti prima di ririprovare NB — non
+"binomiale negativa in generale" come se fosse già stata smentita in modo
+definitivo.
 
 ## Cosa manca (onestamente)
 

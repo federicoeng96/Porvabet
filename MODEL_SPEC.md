@@ -69,12 +69,23 @@ quota nel CSV (verificato contro lo schema colonne reale). Di conseguenza:
   proprietario di un bookmaker), scelte solo per esprimere la probabilità del
   modello a un livello riconoscibile — non sono una quota inventata.
 
-Overdispersione (varianza > media) è un fenomeno noto nei conteggi di corner
-nella letteratura; questo modello usa Poisson puro come primo passo esplicito
-(più semplice, interpretabile), non una scelta definitiva — il backtest
-(v. BACKTEST_SPEC.md) è lo strumento che dovrebbe rivelare se serve una
-binomiale negativa (stessa struttura attacco/difesa, un parametro di
-dispersione in più) tramite la calibration curve.
+**Poisson vs binomiale negativa — testato, non solo ipotizzato.** Un primo
+backtest reale aveva mostrato overconfidence marcata nelle probabilità sopra
+0.7 (v. BACKTEST_SPEC.md), suggerendo overdispersione non catturata da un
+Poisson puro. `NegativeBinomialCountModel`
+(`app/engine/statistical/count_market_model.py`, stessa struttura
+attacco/difesa + un parametro di dispersione `alpha` condiviso, fittato via
+MLE) è stato implementato e backtestato sugli stessi dati/periodo per
+verificarlo — **risultato: la binomiale negativa migliora marginalmente
+Brier/log loss aggregati, ma NON risolve in modo consistente la
+calibrazione nelle fasce alte** (in alcuni bin migliora, in altri peggiora, in
+un segmento converge quasi esattamente a Poisson) — v. BACKTEST_SPEC.md per
+la tabella completa. **`PoissonCountModel` resta il modello in produzione**;
+`NegativeBinomialCountModel` resta nel codice come alternativa testata e
+funzionante, non come modello "in attesa di essere attivato" — l'ipotesi più
+plausibile ora è che l'overconfidence osservata venga più dalla struttura
+media (mancanza di feature come l'arbitro per i cartellini) che dalla forma
+Poisson vs NB della distribuzione stessa.
 
 ## Probabilità → quota fair → value
 

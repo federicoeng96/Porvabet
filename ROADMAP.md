@@ -40,8 +40,13 @@ riflette cosa è già fatto e cosa manca davvero).
     "solo probabilità, nessuna quota" (football-data.co.uk non pubblica quote
     per questi mercati — limite strutturale, non implementativo, v. MODEL_SPEC.md),
     backtest reale con hit rate 56-69% ma overconfidence marcata nelle code
-    (v. BACKTEST_SPEC.md) — priorità NB spostata al punto 4 sotto, ora con
-    evidenza reale a supporto invece che solo teorica.
+    (v. BACKTEST_SPEC.md).
+12. ✅ **Binomiale negativa testata contro Poisson** (`NegativeBinomialCountModel`),
+    stesso backtest reale, stesso periodo: migliora marginalmente Brier/log
+    loss ma **non risolve in modo consistente** l'overconfidence nelle code
+    alte (v. BACKTEST_SPEC.md, confronto completo). Decisione basata sui dati:
+    **Poisson resta il modello di produzione**, NB resta nel codice come
+    alternativa testata, non attivata — non un'assunzione a priori.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
@@ -67,16 +72,16 @@ scaling/isotonic regression) applicata dopo `fair_odds()` la correggerebbe.
 `risk_score.WEIGHTS` e `value.ALERT_THRESHOLD_*` restano punti di partenza
 espliciti, ora con un backtest reale (punto 10 sopra) su cui ricalibrarli.
 
-### 4. Corner/cartellini: passare a binomiale negativa + feature arbitro
-✅ Dati ingeriti, modello Poisson implementato e backtested su dati reali
-(v. punto 11 sopra). **Prossimo passo concreto, ora supportato da evidenza
-reale**: il backtest mostra overconfidence sostanziale (15-25 punti
-percentuali) nelle probabilità sopra 0.7 su entrambi i mercati — segnale
-diretto di overdispersione non catturata dal Poisson puro. Una binomiale
-negativa (stessa struttura attacco/difesa di `PoissonCountModel`, un
-parametro di dispersione in più) è il fix indicato dai dati, non solo
-un'ipotesi. La correzione arbitro per i cartellini resta bloccata
-dall'assenza di dati arbitro (v. punto 5 sotto per AIA-FIGC/PGMOL).
+### 4. Corner/cartellini: la binomiale negativa non basta — serve la feature arbitro (e altre)
+✅ Testata (v. punto 12 sopra): non risolve l'overconfidence nelle code alte in
+modo consistente. **Conclusione aggiornata**: il problema non sembra essere
+principalmente la forma Poisson-vs-NB della distribuzione, ma l'assenza di
+feature esplicative nella struttura media attacco/difesa — in primis
+l'arbitro per i cartellini (bloccato dall'assenza di dati arbitro, v. punto 5
+sotto per AIA-FIGC/PGMOL) e feature tattiche per i corner (v. punto 6 sotto).
+Un'ipotesi più mirata da testare in futuro: dispersione NB **per singola
+squadra** invece che condivisa — non ancora provata, dato che il condiviso
+non ha aiutato abbastanza.
 Il mercato falli (dati già ingeriti, `TeamMatchStats.fouls_committed`) non
 ha ancora un modello/mercato dedicato — i falli non sono tipicamente un
 mercato scommesse standalone come corner/cartellini, priorità bassa.

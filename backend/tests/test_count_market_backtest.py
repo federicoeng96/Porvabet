@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from app.backtest.count_market_runner import run_count_market_backtest, to_bet_records
 from app.backtest.metrics import brier_score, hit_rate, profit_units, roi
-from app.engine.statistical.count_market_model import CountMatchInput
+from app.engine.statistical.count_market_model import CountMatchInput, NegativeBinomialCountModel
 
 
 def _synthetic_matches(seed: int = 3, n: int = 200) -> list[CountMatchInput]:
@@ -56,3 +56,12 @@ def test_no_leakage_respects_min_training_matches():
     matches = _synthetic_matches(n=30)  # fewer than MIN_TRAINING_MATCHES=40
     resolved = run_count_market_backtest(matches, line=9.5)
     assert resolved == []
+
+
+def test_backtest_accepts_negative_binomial_model_factory():
+    """The runner must work identically with either model — this is what lets
+    BACKTEST_SPEC.md's Poisson-vs-NB comparison reuse one code path."""
+    matches = _synthetic_matches()
+    resolved = run_count_market_backtest(matches, line=9.5, model_factory=NegativeBinomialCountModel)
+    assert len(resolved) > 0
+    assert all(r.outcome_code in ("OVER", "UNDER") for r in resolved)

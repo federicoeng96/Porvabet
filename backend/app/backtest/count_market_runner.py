@@ -11,14 +11,30 @@ model's probability and the realized outcome, not a price, so it is exactly
 as valid a check of "is this model any good" as for the priced markets.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Protocol
 
 from app.backtest.metrics import BetRecord
 from app.engine.statistical.count_market_model import CountMatchInput, PoissonCountModel
 
 MIN_TRAINING_MATCHES = 40
 REFIT_BATCH_DAYS = 21  # same widened window used for the real goals backtest, for the same time-budget reason
+
+
+class CountModel(Protocol):
+    """Structural type shared by PoissonCountModel and
+    NegativeBinomialCountModel — lets this runner backtest either without
+    caring which one it got, so the Poisson-vs-NB comparison in
+    BACKTEST_SPEC.md runs the exact same walk-forward loop for both."""
+
+    params: object
+
+    def fit(self, matches: list[CountMatchInput], as_of: date | None = None): ...
+    def match_total_probabilities(
+        self, home_team: str, away_team: str, line: float, max_count: int = 40
+    ) -> dict[str, float]: ...
 
 
 @dataclass(frozen=True)
@@ -36,6 +52,7 @@ def run_count_market_backtest(
     line: float,
     min_training_matches: int = MIN_TRAINING_MATCHES,
     refit_batch_days: int = REFIT_BATCH_DAYS,
+    model_factory: Callable[[], CountModel] = PoissonCountModel,
 ) -> list[ResolvedCountPrediction]:
     all_sorted = sorted(matches, key=lambda m: m.match_date)
     batches = _batches_by_window(all_sorted, refit_batch_days)
@@ -48,7 +65,7 @@ def run_count_market_backtest(
             training_pool.extend(batch)
             continue
 
-        model = PoissonCountModel()
+        model = model_factory()
         as_of = batch[0].match_date - timedelta(days=1)
         model.fit(training_pool, as_of=as_of)
 

@@ -1,29 +1,36 @@
-"""Poisson attack/defense model for count-based team markets (corners, cards).
+"""Attack/defense count models for corners/cards markets: Poisson and negative
+binomial, both fitted, both backtested — see BACKTEST_SPEC.md "Poisson vs
+negative binomiale" for the actual comparison that decided which one
+`count_market_estimates.py` uses in production, and why. This module
+deliberately keeps both classes rather than deleting the loser, so the
+comparison stays reproducible and either can be reinstated if a future,
+larger backtest changes the picture.
 
 Rationale (see MODEL_SPEC.md for the full comparison): corners and cards are
 event counts per team, not goals — they don't share Dixon-Coles's low-score
 correlation problem (that correction exists specifically because two
 independent Poissons underestimate 0-0/1-1 scorelines, a goals-specific
-artifact), so this is a plain Maher-style log-linear Poisson attack/defense
-model, not a copy of Dixon-Coles with the tau correction removed for no reason.
+artifact), so both models here are plain Maher-style log-linear attack/defense
+models, not a copy of Dixon-Coles with the tau correction removed for no
+reason.
 
-Why Poisson and not negative binomial as a first cut: this is a genuine
-open modeling question, not a settled choice — corner/card counts often show
-overdispersion (variance > mean) in the literature, which a plain Poisson
-under-represents (too little probability mass in the tails, i.e. overconfident
-probabilities). Starting with Poisson keeps the first implementation simple
-and interpretable; BACKTEST_SPEC.md's calibration curve for these markets is
-exactly the tool that should tell us whether the overdispersion is bad enough
-in practice to justify moving to a negative-binomial version (same
-attack/defense structure, one extra dispersion parameter) — that upgrade is
-recorded in ROADMAP.md, not done speculatively before there's evidence for it.
+Why both: corner/card counts often show overdispersion (variance > mean) in
+the literature, which a plain Poisson under-represents (too little
+probability mass in the tails, i.e. overconfident probabilities) — an initial
+real backtest on this project's own data confirmed exactly that pattern
+(marked overconfidence above p=0.7, see BACKTEST_SPEC.md). The negative
+binomial below adds one dispersion parameter (shared across teams) to the
+same attack/defense structure, which should absorb that overdispersion IF
+it's really about the count distribution's shape and not, say, the
+attack/defense mean structure itself being too crude — which is exactly the
+kind of thing that has to be checked with backtest numbers, not assumed.
 
 Cards specifically: a referee's tendencies are a known driver of card counts
 (see MODEL_SPEC.md / the brief itself) but no referee-level data is ingested
-yet (see DATA_SOURCES.md on AIA-FIGC/PGMOL), so this model is deliberately
-team/opponent-only for now — it will systematically miss referee-driven
-variance until that feature exists, which is a known, documented limitation,
-not an oversight.
+yet (see DATA_SOURCES.md on AIA-FIGC/PGMOL), so both models here are
+deliberately team/opponent-only for now — they will systematically miss
+referee-driven variance until that feature exists, which is a known,
+documented limitation, not an oversight.
 """
 
 from dataclasses import dataclass
@@ -31,7 +38,8 @@ from datetime import UTC, date, datetime
 
 import numpy as np
 from scipy.optimize import minimize
-from scipy.stats import poisson
+from scipy.special import gammaln
+from scipy.stats import nbinom, poisson
 
 
 @dataclass(frozen=True)
@@ -148,6 +156,145 @@ class PoissonCountModel:
         return {"OVER": float(probs[counts > line].sum()), "UNDER": float(probs[counts < line].sum())}
 
     def _require_params(self) -> CountModelParams:
+        if self.params is None:
+            raise RuntimeError("Model has not been fitted — call .fit(matches) first")
+        return self.params
+
+
+@dataclass
+class NBCountModelParams:
+    teams: list[str]
+    attack: dict[str, float]
+    defense: dict[str, float]
+    home_advantage: float
+    alpha: float  # dispersion parameter, shared across teams; variance = mu + alpha*mu^2
+    fitted_at: datetime
+    training_cutoff: date
+    n_matches: int
+
+
+class NegativeBinomialCountModel:
+    """Same attack/defense/home-advantage structure as PoissonCountModel, plus
+    one shared dispersion parameter `alpha` (NB2 parameterization: variance =
+    mu + alpha*mu^2, alpha->0 recovers Poisson). `alpha` is fitted jointly with
+    the attack/defense ratings via MLE, not set by hand.
+
+    Unlike Poisson, the sum of two negative-binomial variables with a shared
+    dispersion but different means has no closed form (it does for Poisson,
+    and for NB only when the two also share the same success probability,
+    which they don't here since home/away means differ) — so
+    `match_total_probabilities` computes the match-total distribution by
+    explicit convolution of the two teams' count distributions instead.
+    """
+
+    def __init__(self, xi: float = 0.0018) -> None:
+        self.xi = xi
+        self.params: NBCountModelParams | None = None
+
+    def fit(self, matches: list[CountMatchInput], as_of: date | None = None) -> NBCountModelParams:
+        if not matches:
+            raise ValueError("Cannot fit count model on an empty match list")
+        as_of = as_of or max(m.match_date for m in matches)
+        teams = sorted({m.home_team for m in matches} | {m.away_team for m in matches})
+        n = len(teams)
+        team_idx = {t: i for i, t in enumerate(teams)}
+
+        weights = np.array([np.exp(-self.xi * (as_of - m.match_date).days) for m in matches])
+        home_idx = np.array([team_idx[m.home_team] for m in matches])
+        away_idx = np.array([team_idx[m.away_team] for m in matches])
+        home_counts = np.array([m.home_count for m in matches], dtype=float)
+        away_counts = np.array([m.away_count for m in matches], dtype=float)
+
+        def unpack(x: np.ndarray) -> tuple[np.ndarray, np.ndarray, float, float]:
+            attack, defense, home_adv, log_alpha = x[:n], x[n : 2 * n], x[2 * n], x[2 * n + 1]
+            # Clip before exponentiating: L-BFGS-B can probe extreme log_alpha
+            # values mid-search: exp(-1000) underflows to an exact 0.0, and
+            # 1/alpha then raises ZeroDivisionError. +-20 covers alpha from
+            # ~2e-9 (indistinguishable from Poisson) to ~5e8 (absurdly
+            # overdispersed) — nowhere near where a real optimum would land,
+            # so clipping here never constrains a genuine fit.
+            log_alpha = float(np.clip(log_alpha, -20.0, 20.0))
+            return attack, defense, home_adv, float(np.exp(log_alpha))
+
+        def nb_log_pmf(counts: np.ndarray, mu: np.ndarray, r: float) -> np.ndarray:
+            # NB2: r = 1/alpha "successes", p = r/(r+mu).
+            return (
+                gammaln(counts + r)
+                - gammaln(r)
+                - gammaln(counts + 1)
+                + r * np.log(r / (r + mu))
+                + counts * np.log(mu / (r + mu))
+            )
+
+        def neg_log_likelihood(x: np.ndarray) -> float:
+            attack, defense, home_adv, alpha = unpack(x)
+            r = 1.0 / alpha
+            mu_home = np.exp(attack[home_idx] + defense[away_idx] + home_adv)
+            mu_away = np.exp(attack[away_idx] + defense[home_idx])
+            log_p = nb_log_pmf(home_counts, mu_home, r) + nb_log_pmf(away_counts, mu_away, r)
+            return float(-(weights * log_p).sum())
+
+        def objective(x: np.ndarray) -> float:
+            attack = x[:n]
+            penalty = 1000.0 * (attack.mean()) ** 2  # identifiability, same trick as Dixon-Coles
+            return neg_log_likelihood(x) + penalty
+
+        x0 = np.zeros(2 * n + 2)
+        x0[2 * n + 1] = np.log(0.1)  # alpha=0.1 starting guess (mild overdispersion)
+        result = minimize(objective, x0, method="L-BFGS-B")
+        attack, defense, home_adv, alpha = unpack(result.x)
+
+        self.params = NBCountModelParams(
+            teams=teams,
+            attack=dict(zip(teams, attack.tolist())),
+            defense=dict(zip(teams, defense.tolist())),
+            home_advantage=float(home_adv),
+            alpha=alpha,
+            fitted_at=datetime.now(UTC),
+            training_cutoff=as_of,
+            n_matches=len(matches),
+        )
+        return self.params
+
+    def expected_counts(self, home_team: str, away_team: str) -> tuple[float, float]:
+        p = self._require_params()
+        if home_team not in p.attack or away_team not in p.attack:
+            missing = home_team if home_team not in p.attack else away_team
+            raise ValueError(f"Team not in fitted model: {missing!r}")
+        lam = np.exp(p.attack[home_team] + p.defense[away_team] + p.home_advantage)
+        mu = np.exp(p.attack[away_team] + p.defense[home_team])
+        return float(lam), float(mu)
+
+    def _team_pmf(self, mu: float, max_count: int) -> np.ndarray:
+        p = self._require_params()
+        r = 1.0 / p.alpha
+        nb_p = r / (r + mu)  # scipy's nbinom(n, p) has mean n(1-p)/p
+        counts = np.arange(max_count + 1)
+        return nbinom.pmf(counts, r, nb_p)
+
+    def team_total_probabilities(
+        self, home_team: str, away_team: str, side: str, line: float, max_count: int = 30
+    ) -> dict[str, float]:
+        lam, mu = self.expected_counts(home_team, away_team)
+        rate = lam if side == "home" else mu
+        probs = self._team_pmf(rate, max_count)
+        counts = np.arange(max_count + 1)
+        return {"OVER": float(probs[counts > line].sum()), "UNDER": float(probs[counts < line].sum())}
+
+    def match_total_probabilities(
+        self, home_team: str, away_team: str, line: float, max_count: int = 40
+    ) -> dict[str, float]:
+        """No closed form for the sum (see class docstring) — convolve the two
+        teams' count distributions explicitly instead."""
+        lam, mu = self.expected_counts(home_team, away_team)
+        home_pmf = self._team_pmf(lam, max_count)
+        away_pmf = self._team_pmf(mu, max_count)
+        total_pmf = np.convolve(home_pmf, away_pmf)[: max_count + 1]
+        total_pmf = total_pmf / total_pmf.sum()  # renormalize after truncation
+        counts = np.arange(len(total_pmf))
+        return {"OVER": float(total_pmf[counts > line].sum()), "UNDER": float(total_pmf[counts < line].sum())}
+
+    def _require_params(self) -> NBCountModelParams:
         if self.params is None:
             raise RuntimeError("Model has not been fitted — call .fit(matches) first")
         return self.params
