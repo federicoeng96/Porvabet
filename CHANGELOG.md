@@ -90,3 +90,9 @@ completi — è un indice.
   l'EPL (Brier/log loss/calibrazione code alte), non aiuta la Serie A —
   **non attivata di default** per nessuno dei due campionati, decisione
   basata sui numeri, codice testato ma non collegato al layer live.
+- `0237c4f` — Correzione corner da PPDA/deep completions: correlazione reale
+  confermata prima di costruire nulla (r=-0.264 PPDA, +0.447 deep
+  completions) ma la correzione costruita **peggiora** Brier/log
+  loss/calibrazione su ogni metrica, per entrambi i campionati — risultato
+  negativo più netto di quello xG. **Non attivata**, codice testato ma non
+  collegato al layer live.
