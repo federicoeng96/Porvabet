@@ -252,11 +252,13 @@ Entrambe restano nel codice, testate, non collegate al layer di analisi live.
 - ✅ ~~Estensione alle altre 9 stagioni disponibili~~ — fatto (v. sopra).
 - crosses_per_90/progressive_passes (non in understat, servirebbero fbref o
   un'altra fonte — bloccati dagli stessi motivi sopra).
-- Le due correzioni già testate (xG su Dixon-Coles, deep completions sui
-  corner) non sono state ri-backtestate contro le 9 stagioni aggiuntive ora
-  disponibili — la decisione già presa (non attivarle) si basava solo su
-  2023/24; un ri-test su un campione più ampio potrebbe cambiare la
-  conclusione o confermarla con più confidenza, non ancora fatto.
+- ✅ ~~Le due correzioni già testate (xG su Dixon-Coles, deep completions sui
+  corner) non sono state ri-backtestate contro le 9 stagioni aggiuntive~~ —
+  fatto in un turno successivo (v. sopra, "Collegate al Decision Engine..."):
+  entrambe ri-testate sulle 10 stagioni complete, stessa conclusione
+  (non attivare) ora su base molto più solida invece che su una sola
+  stagione. Questa voce era rimasta qui per una svista — corretta durante
+  la sessione notturna di coerenza documentale.
 
 ### 6. ✅ Intelligence Engine — livello di validazione costruito, ancora senza una fonte di segnali reale
 `app/engine/intelligence/` non è più vuoto: `signals.py` definisce
@@ -331,25 +333,18 @@ interfacce, senza refactoring del pre-match.
   scommesse e ROADMAP.md lo trattava già come condizionale ("se servisse").
   Non implementato autonomamente: è esattamente il tipo di ambiguità che
   richiede una decisione esplicita, non un'assunzione.
-- ⚠️ **Rivalutazione colonna ALERT (Data/Ora | Partita | Risk | Selezione |
-  Quota | Probabilità | Quota Modello | Info | Value | 🚨) — ancora non
-  sbloccata.** Verificato in questa sessione dopo il tentativo di
-  implementare Betson (via diretta.it) e livescore.com come fonti di quote
-  pre-match reali per partite future (v. DATA_SOURCES.md, ARCHITECTURE.md):
-  **nessuna delle due fornisce oggi quote reali** — entrambe sono stub
-  verificati-bloccati (non "non ancora implementati per pigrizia"), per un
-  limite tecnico di questo ambiente (nessun browser headless funzionante
-  attraverso il proxy di rete di questa sessione) e, per livescore.com, anche
-  per la natura dei dati stessi (widget di quote gated dietro consenso,
-  bookmaker mai osservato dal vivo). Di conseguenza **la premessa del punto 3
-  del brief di questo turno non si è verificata**: non ci sono quote
-  pre-match reali disponibili per calcolare edge/value su partite future, e
-  la colonna ALERT resta nello stesso stato di prima — vuota/non popolabile
-  con dati reali per partite non ancora giocate, mai con dati finti. Se in
-  futuro uno dei due `OddsProvider` verrà davvero completato (richiede prima
-  che il limite del browser headless sia risolto — v. ARCHITECTURE.md), va
-  ripreso da qui: a quel punto costruire il frontend per la colonna ALERT
-  avrebbe un motivo concreto, cosa che oggi ancora non ha.
+- ✅ ~~Rivalutazione colonna ALERT — ancora non sbloccata~~ **— SBLOCCATA in
+  una sessione successiva, v. il punto Betfair subito sotto.** Cronaca
+  originale (per contesto): Betson (via diretta.it) e livescore.com erano
+  stati valutati come fonti di quote pre-match reali per partite future e
+  **nessuna delle due forniva quote reali** — entrambe stub
+  verificati-bloccati per un limite tecnico dell'ambiente (browser headless
+  non funzionante attraverso il proxy di rete di questa sessione), non per
+  pigrizia. La colonna ALERT restava quindi vuota/non popolabile per
+  partite future. **Questo non è più lo stato attuale**: Betfair Exchange
+  (fonte ufficiale, non scraped — v. sotto) fornisce ora quote reali quando
+  disponibili, e la colonna ALERT funziona per qualunque `Candidate` con
+  quota reale, partita futura inclusa.
 - ✅ **Betfair collegato al Decision Layer — credenziali configurate, ma
   ancora non verificato dal vivo (blocco di rete della sandbox, non un
   problema di codice o di credenziali).** `run_analysis_for_match`
