@@ -26,3 +26,9 @@ completi — è un indice.
 - `3b8aac6` — Roadmap item 2 (refit più frequente su tutte le stagioni)
   completato: Brier/log loss migliorano leggermente, calibrazione code alte
   non risolta del tutto.
+- `8cbc063` — `model_reliability` reale al posto del placeholder 0.5 (gap di
+  calibrazione dalla riga `Backtest` persistita, fail-conservative se non
+  stimabile). Trovato e corretto un bug di etichettatura (`refit_batch_days`
+  mostrato come 21 quando il codice usava 7) in BACKTEST_SPEC.md/ROADMAP.md.
+  Aggiunto modulo di calibrazione post-hoc (Platt + isotonica) non ancora
+  validato sui dati reali (prossimo commit).
