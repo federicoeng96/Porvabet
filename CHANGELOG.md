@@ -58,3 +58,12 @@ completi — è un indice.
   segnalata come ambiguità reale — non è chiaro cosa si dovrebbe salvare, e
   non esiste alcun modello utente/sessione in questo progetto su cui
   agganciarla. Nessuna decisione di prodotto presa autonomamente.
+- `ba8ed21` — Aggiornato CHANGELOG.
+- `07ab9d6` — Audit completo diretta.it/Betson come fonte quote reali per il
+  Value/Odds Engine: **categoria C, non implementato** — ToS vieta lo
+  scraping senza eccezione per uso personale, e la quota è di un bookmaker
+  terzo in licenza solo per la visualizzazione. Aggiunta nota permanente
+  "uso esclusivamente personale" in README.md/DATA_SOURCES.md; rivista la
+  nota di rischio di WhoScored/SofaScore con la distinzione esplicita
+  "uso personale abbassa il rischio pratico, non elimina il rischio
+  contrattuale residuo" — nessuna fonte declassata da B ad A.
