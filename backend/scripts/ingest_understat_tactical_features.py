@@ -19,6 +19,8 @@ row (not yet ingested from football-data.co.uk) is skipped and reported,
 never guessed/created here.
 """
 
+import time
+
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
@@ -28,7 +30,18 @@ from app.models.enums import DataSourceCategory
 from app.models.stats import TacticalFeature
 from app.providers.understat.provider import UnderstatProvider
 
-SEASONS = ["2023/2024"]
+SEASONS = [
+    "2015/2016",
+    "2016/2017",
+    "2017/2018",
+    "2018/2019",
+    "2019/2020",
+    "2020/2021",
+    "2021/2022",
+    "2022/2023",
+    "2023/2024",
+    "2024/2025",
+]
 COMPETITIONS = ["EPL", "SERIE_A"]
 
 FEATURE_NAMES = ("xg", "xga", "npxg", "npxga", "deep", "deep_allowed")
@@ -135,8 +148,17 @@ def main() -> None:
     )
     db.commit()
     try:
+        # understat has no documented rate limit (unlike fbref's stated
+        # 10/min), but robots.txt disallows all crawling of this site
+        # (category B, personal use accepted) — a short pause between the
+        # ~20 requests this run makes is a considerate default, not a
+        # published requirement.
+        first = True
         for competition_code in COMPETITIONS:
             for season_label in SEASONS:
+                if not first:
+                    time.sleep(2.0)
+                first = False
                 persist_season(db, provider, source, competition_code, season_label)
     finally:
         db.close()
