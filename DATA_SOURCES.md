@@ -622,7 +622,26 @@ pronta per quando (e se) una delle due fonti reali verrà completata. Nessuna
 delle due fonti fornisce oggi quote reali al Value/Odds Engine, che continua
 a usare esclusivamente football-data.co.uk per le quote storiche.
 
-### FantaLab — moduli/titolari/tiratori/ballottaggi (Serie A)
+### FantaLab — moduli/titolari/tiratori/ballottaggi (Serie A) — **ACCANTONATO**
+
+> **Stato finale: accantonato su decisione esplicita dell'utente, per
+> complessità/rischio di autenticazione (AWS Cognito + Premium login
+> automatizzato), non per un divieto ToS.** Questa è una distinzione
+> importante da non confondere con gli accantonamenti "categoria C" delle
+> altre fonti di questo documento (diretta.it/Flashscore, legaseriea.it,
+> WhoScored/SofaScore a un livello più attenuato): lì il blocco viene da una
+> clausola ToS esplicita che vieta scraping/estrazione. Qui **nessuna
+> clausola ToS di questo tipo è stata trovata** (v. punto 2 sotto) — il
+> blocco è puramente tecnico/di rischio: i dati reali sono raggiungibili solo
+> autenticandosi come l'utente Premium tramite un flusso di login (AWS
+> Cognito) che richiederebbe automazione GUI ripetuta del proprio account
+> pagante, con relativo rischio di sospensione. L'utente, informato di
+> questo, **ha scelto esplicitamente di non autorizzare l'automazione del
+> login Premium/Cognito** — non per un problema di legittimità della fonte,
+> ma perché il rischio per il proprio account è troppo alto. Nessun
+> `LineupProvider`/`TacticalProvider` verrà quindi costruito per FantaLab in
+> questo progetto, salvo un cambio di decisione esplicito e futuro
+> dell'utente.
 
 **Audit tecnico eseguito, implementazione bloccata e segnalata all'utente
 invece di essere risolta unilateralmente** — non per scelta, ma perché la
@@ -697,6 +716,13 @@ esteso con campi analoghi (es. `fantalab_email`/`fantalab_password`, opzionali,
 mai hardcoded né in chiaro nel codice o nei log) solo se e quando questo
 lavoro verrà sbloccato dall'utente.
 
+**Decisione dell'utente (turno successivo a questo audit): non autorizzato.**
+L'utente ha esplicitamente rifiutato di autorizzare l'automazione del login
+Premium/Cognito, per il rischio verso il proprio account — non ha messo in
+discussione la legittimità della fonte in sé. FantaLab resta quindi
+**accantonato per complessità/rischio di autenticazione, non per ToS**, a
+differenza delle altre fonti categoria C di questo documento.
+
 
 ### SOS Fanta / Gazzetta dello Sport (probabili formazioni)
 - Non fanno parte dell'elenco di fonti analizzate a fondo in questo progetto (il
@@ -732,4 +758,4 @@ lavoro verrà sbloccato dall'utente.
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
 | Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
 | livescore.com (quote, backup) | C | ❌ | Auditata da zero; quote dietro widget affiliato gated, mai osservate dal vivo |
-| FantaLab (moduli/titolari/ballottaggi) | C | ❌ | Audit bloccato e segnalato — nessuna API piana, ponte auth Cognito→Firebase non verificabile |
+| FantaLab (moduli/titolari/ballottaggi) | C | ❌ | **Accantonato per rischio autenticazione (Cognito), non per ToS** — utente ha rifiutato l'automazione del login Premium |

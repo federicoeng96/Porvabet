@@ -92,7 +92,16 @@ fonti vanno riverificate da capo prima di essere implementate — questo
 documento non deve essere trattato come prova che siano permanentemente
 irraggiungibili.
 
-## LineupProvider/TacticalProvider — stato per FantaLab
+## LineupProvider/TacticalProvider — stato per FantaLab (**ACCANTONATO**)
+
+**Decisione esplicita dell'utente: FantaLab è accantonato per complessità/
+rischio di autenticazione (AWS Cognito + login Premium automatizzato), non
+per un divieto ToS** — nessuna clausola ToS anti-scraping è mai stata trovata
+per questa fonte (v. DATA_SOURCES.md). Questo lo distingue esplicitamente
+dagli accantonamenti "categoria C per ToS" delle altre fonti (diretta.it/
+Betson, legaseriea.it): qui il limite è tecnico/di rischio-account, non
+legale. L'utente ha rifiutato di autorizzare l'automazione del login, non
+la legittimità della fonte in sé.
 
 L'interfaccia `LineupProvider` (`app/providers/base/lineup_provider.py`) è già
 usata da `SosFantaLineupProvider`/`GazzettaLineupProvider` (probabili

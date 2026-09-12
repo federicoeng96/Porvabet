@@ -179,17 +179,18 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
     ),
     SourceDefinition(
         key="fantalab",
-        name="FantaLab (moduli/titolari/tiratori/ballottaggi Serie A)",
+        name="FantaLab (moduli/titolari/tiratori/ballottaggi Serie A) — ACCANTONATO",
         category=DataSourceCategory.C_ABSTRACT_ONLY,
         is_implemented=False,
-        notes="Audit blocked before implementation, flagged to the user rather than "
-        "resolved unilaterally: no plain data API exists (single-bundle SPA, only "
-        "marketing/deep-link endpoints on api.fantalab.it). Real data sits behind an "
-        "authenticated Firebase Realtime Database (verified 401 without auth); login "
-        "uses AWS Cognito, a different identity system, with no visible bridge to "
-        "Firebase auth. Would require real headless-browser Premium-login automation "
-        "of the user's own paid account (heavier than any source implemented this "
-        "session) — needs the user's explicit go/no-go before any implementation. "
-        "See DATA_SOURCES.md.",
+        notes="Shelved on the user's explicit decision for authentication "
+        "complexity/risk (AWS Cognito + automated Premium login), NOT for a ToS "
+        "prohibition — no anti-scraping clause was ever found for this source, "
+        "unlike the other C-category entries here (diretta.it/Betson, "
+        "legaseriea.it). No plain data API exists (single-bundle SPA, only "
+        "marketing/deep-link endpoints on api.fantalab.it); real data sits behind "
+        "an authenticated Firebase Realtime Database (verified 401 without auth) "
+        "reachable only via a Cognito login with no visible bridge to Firebase "
+        "auth. The user declined to authorize automating their own Premium login "
+        "given the account-suspension risk. See DATA_SOURCES.md.",
     ),
 ]
