@@ -141,6 +141,33 @@ def test_raises_clear_error_without_credentials():
         provider.get_odds_for_match("Roma", "Inter", KICKOFF_ISO)
 
 
+def test_error_message_names_exact_env_vars_and_key_tier():
+    # The user must be able to fix this from the message alone, without
+    # reading the source — not a cryptic/generic "missing config" error.
+    provider = BetfairExchangeOddsProvider(app_key=None, username=None, password=None)
+    with pytest.raises(BetfairCredentialsMissingError) as exc_info:
+        provider.get_odds_for_match("Roma", "Inter", KICKOFF_ISO)
+    message = str(exc_info.value)
+    for expected in ("betfair_app_key", "betfair_username", "betfair_password", "Delayed"):
+        assert expected in message
+
+
+def test_reads_credentials_from_settings_env_vars_when_not_passed_explicitly(monkeypatch):
+    # Verifies the actual env-var wiring (app.config.Settings), not just the
+    # constructor-argument path exercised by every other test here.
+    monkeypatch.setattr(
+        "app.providers.betfair.provider.settings.betfair_app_key", "env-key"
+    )
+    monkeypatch.setattr(
+        "app.providers.betfair.provider.settings.betfair_username", "env-user"
+    )
+    monkeypatch.setattr(
+        "app.providers.betfair.provider.settings.betfair_password", "env-pass"
+    )
+    provider = BetfairExchangeOddsProvider()
+    assert provider.is_available() is True
+
+
 def test_returns_back_prices_labeled_as_betfair_exchange():
     fake_client = _FakeClient(
         _soccer_event_types(), _match_odds_catalogue(), _market_book_with_prices()

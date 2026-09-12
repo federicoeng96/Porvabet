@@ -343,3 +343,13 @@ interfacce, senza refactoring del pre-match.
   contro l'API live per una partita reale, poi valutare se collegare la
   fonte all'engine e costruire la colonna ALERT nel frontend — a quel punto
   avrebbe finalmente un motivo concreto e verificato, non solo teorico.
+- ⚠️ **Stato: BLOCCATO IN ATTESA, non forzato.** L'utente si sta registrando
+  su Betfair (KYC in corso, qualche giorno). In questo turno l'interfaccia
+  è stata rifinita (config `.env.example` aggiornato con
+  `BETFAIR_APP_KEY`/`BETFAIR_USERNAME`/`BETFAIR_PASSWORD`, test aggiuntivi
+  per il messaggio d'errore — deve restare leggibile e risolvibile da solo,
+  non criptico — e per la lettura reale delle variabili d'ambiente tramite
+  `app.config.Settings`, non solo degli argomenti costruttore) ma **nessun
+  tentativo contro l'API live**: non ci sono credenziali da usare finché
+  l'utente non completa la registrazione. Prossimo passo non ancora
+  eseguibile, in attesa.

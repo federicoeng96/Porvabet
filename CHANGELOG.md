@@ -166,3 +166,12 @@ completi — è un indice.
   richiesta live per una stagione già completamente persistita invece di
   rifarla sempre. Una singola esecuzione pulita ha poi completato il resto
   senza errori. 149 test passano, lint pulito.
+- Rifinitura interfaccia Betfair (utente in attesa di KYC, nessuna
+  credenziale ancora disponibile — nessun tentativo contro l'API live).
+  Aggiunto `.env.example` con `BETFAIR_APP_KEY`/`BETFAIR_USERNAME`/
+  `BETFAIR_PASSWORD` (verificato che `app.config.Settings` li legge
+  correttamente). Due nuovi test: il messaggio d'errore per credenziali
+  mancanti nomina esplicitamente le variabili da impostare e il livello di
+  chiave richiesto (mai criptico), e la lettura reale da variabili
+  d'ambiente (non solo dagli argomenti costruttore, unico percorso testato
+  finora) è ora verificata. 151 test passano, lint pulito.
