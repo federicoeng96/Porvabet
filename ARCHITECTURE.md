@@ -22,6 +22,13 @@ propri termini di servizio restituiscono tutti HTTP 403, sia da rete diretta
 sia tramite `WebFetch`. Non esiste inoltre alcuna API pubblica o feed
 documentato, né un aggregatore di quote di terze parti che copra ePlay24.
 
+**Anche diretta.it/Flashscore (quote del bookmaker "Betson" mostrate sul
+sito) è stato valutato come possibile alternativa e scartato** (v.
+`DATA_SOURCES.md`, categoria C): tecnicamente raggiungibile (a differenza di
+ePlay24), ma i ToS vietano esplicitamente scraping/estrazione senza consenso,
+e la quota mostrata appartiene al bookmaker terzo licenziatario, non a
+diretta.it stesso — un doppio motivo di rischio, non solo un blocco tecnico.
+
 Conseguenza architetturale: finché `EPlay24OddsProvider` resta
 un'interfaccia senza implementazione (v. `app/providers/eplay24/provider.py`),
 questo progetto è, di fatto, **un motore di stima (probabilità + quota fair),

@@ -9,6 +9,20 @@ Serie A). Vedi la documentazione di progetto prima di tutto:
 - [`BACKTEST_SPEC.md`](./BACKTEST_SPEC.md) — metriche, garanzie anti-leakage, cosa manca
 - [`ROADMAP.md`](./ROADMAP.md) — stato reale e prossimi passi
 
+## Uso previsto
+
+**Questo strumento è e resterà a uso esclusivamente personale dell'utente
+proprietario del progetto.** Non verrà mai distribuito, venduto, condiviso con
+terzi né reso disponibile ad altri utenti in nessuna forma. Questo è il
+contesto reale in cui vanno lette tutte le valutazioni di rischio legale in
+`DATA_SOURCES.md` e nella sezione sotto: dove un ToS distingue tra uso
+personale e ridistribuzione/uso commerciale, questo progetto è sempre il
+primo caso, mai il secondo. Questo abbassa il rischio pratico di violazione
+(nessuna ridistribuzione, nessun terzo esposto), ma **non elimina il rischio
+contrattuale residuo** se un domani un ToS vietasse esplicitamente anche il
+solo uso personale a scopo di scommessa — v. `DATA_SOURCES.md` per il
+dettaglio fonte per fonte.
+
 ## ⚠️ Nota sui dati
 
 Il repository di per sé **non include un database precaricato**: quali dati ci
@@ -52,6 +66,28 @@ tecnici non sono stati verificati, e implementarli senza prima leggerli
 direttamente violerebbe il principio di questo progetto di non inventare
 endpoint. Se in futuro verranno implementati, il rischio resta quello sopra:
 va accettato consapevolmente dall'utente, non aggirato.
+
+**Lettura nel contesto reale di uso personale (v. "Uso previsto" sopra)**:
+l'uso reale di questo progetto — personale, non distribuito — abbassa il
+rischio *pratico* di queste due clausole (nessun terzo esposto, nessuna
+ridistribuzione avvenuta). Questo **non è la stessa cosa** che dire "il
+rischio è basso": entrambe le clausole restano scritte, e resta un rischio
+contrattuale residuo se un domani vietassero esplicitamente anche il solo uso
+personale a scopo di scommessa (non solo la ridistribuzione a terzi) — in tal
+caso il rischio tornerebbe pieno, indipendentemente da come viene usato oggi.
+Il flag `LICENSE_RISK` e questa documentazione restano per questo motivo, non
+vengono rimossi né la classificazione B viene declassata ad A solo perché
+l'uso è personale.
+
+**diretta.it / Flashscore (quote del bookmaker "Betson")** è stato valutato
+in questa sessione come possibile fonte di quote reali per il Value/Odds
+Engine e **classificato categoria C, non B**: a differenza di WhoScored/
+SofaScore, qui i ToS vietano lo scraping/l'estrazione dati **senza
+un'eccezione per uso personale**, e la quota mostrata è di un bookmaker terzo
+concessa in licenza a diretta.it solo per la visualizzazione sul proprio
+sito — non un dato che diretta.it stesso possa "prestare" a terzi, nemmeno
+implicitamente. Nessun provider implementato — v. `DATA_SOURCES.md` per
+l'audit completo.
 
 ## Setup — Backend
 

@@ -1,5 +1,23 @@
 # Fonti dati — valutazione e stato di implementazione
 
+## Uso previsto — nota permanente
+
+**Questo strumento è e resterà a uso esclusivamente personale dell'utente
+proprietario del progetto. Non verrà mai distribuito, venduto, condiviso con
+terzi né reso disponibile ad altri utenti in nessuna forma.** Questa nota
+vale per tutte le valutazioni di rischio in questo documento: dove una
+clausola ToS distingue (esplicitamente o implicitamente) tra consultazione/uso
+personale e ridistribuzione/uso commerciale/servizio a terzi, il contesto reale
+di questo progetto è sempre il primo, mai il secondo — **nessuna
+ridistribuzione, nessun terzo esposto**. Questo abbassa il rischio pratico di
+violazione (chi farebbe valere un ToS contro un uso privato non distribuito?),
+ma **non elimina il rischio contrattuale residuo**: se un domani un ToS
+vietasse esplicitamente anche il solo uso personale a scopo di scommessa (non
+solo la ridistribuzione), quel rischio resterebbe intatto e andrebbe
+rivalutato — non va confuso con un generico "rischio basso" indifferenziato.
+Ogni fonte di categoria B sotto riporta questa distinzione esplicitamente,
+non la assume.
+
 Metodologia: ogni fonte sotto è stata verificata (in questa sessione di sviluppo)
 tramite ricerca web (WebFetch/WebSearch, che instradano diversamente dal proxy di
 rete sandboxato usato dal codice applicativo — v. nota di ambiente in
@@ -216,6 +234,14 @@ l'affidabilità pur senza un fetch diretto della pagina live.
   proprio **non è implementato** — gli endpoint reali non sono stati
   verificati in questo progetto, e implementarli "a naso" violerebbe il
   principio di non inventare endpoint.
+- **Nel contesto reale d'uso di questo progetto** (v. nota a inizio
+  documento — personale, mai distribuito): l'assenza di ridistribuzione
+  abbassa il rischio *pratico* di questa clausola specifica (che vieta
+  esplicitamente "media, betting or fantasy platforms" — un uso personale
+  non distribuito non è, letteralmente, nessuno di questi tre). Questo non
+  elimina il rischio: se un domani la clausola vietasse anche il solo uso
+  personale (non solo l'operare come piattaforma), il rischio tornerebbe
+  pieno. Il flag `LICENSE_RISK` e la classificazione B restano invariati.
 
 ### SofaScore
 - **Clausola ToS specifica sui bookmaker**:
@@ -235,6 +261,16 @@ l'affidabilità pur senza un fetch diretto della pagina live.
   `SofaScoreProvider` porta lo stesso flag esplicito
   `LICENSE_RISK = "personal_use_only_betting_platform_clause"` e richiede
   `acknowledge_personal_use_only=True`, scraping non implementato.
+- **Nel contesto reale d'uso di questo progetto** (personale, mai
+  distribuito): stessa lettura di WhoScored sopra — il disclaimer di
+  SofaScore è rivolto esplicitamente a "bookmakers" (un operatore
+  commerciale), non a un singolo utente che consulta dati per sé; l'uso
+  reale di questo progetto abbassa quindi il rischio pratico. Resta però un
+  divieto scritto di "data mining, robots, or similar data gathering tools"
+  **senza eccezione esplicita per uso personale** — più simile, su questo
+  punto, alla clausola di diretta.it/Flashscore sotto che a quella di
+  WhoScored. Rischio contrattuale residuo non eliminato; classificazione B
+  invariata.
 
 ---
 
@@ -297,6 +333,118 @@ prove (come nella verifica iniziale, fatta senza accesso di rete diretto) —
   a pagamento indipendente.
 - **Stato nel codice**: `LegaSerieAProvider` è solo interfaccia, non implementata.
 
+### diretta.it / Flashscore — quote reali (bookmaker "Betson"), per il Value/Odds Engine
+
+**Audit completo eseguito in questa sessione, mai fatto prima** (era stato
+accantonato in precedenza solo perché il caso d'uso — corner/cartellini/falli
+— non serviva più, senza alcuna verifica ToS/tecnica: v. nota storica più
+sotto). Il caso d'uso ora è diverso e più sensibile: quote reali per
+calcolare edge/value, non statistiche di partita.
+
+**1. Verifica tecnica di accesso — raggiungibile, non bloccato come fbref/ePlay24.**
+`GET https://www.diretta.it/` risponde `200` con contenuto reale (nessuna
+sfida Cloudflare, nessun blocco edge Akamai come ePlay24). `robots.txt`
+(`https://www.diretta.it/robots.txt`, verificato con fetch reale) per
+`User-agent: *` disallowa solo `/classifiche/`, `/tabellone/`, `/newsfeed/` e
+un pattern di file JS — non le pagine partita/quote. Disallowa esplicitamente
+per intero una lista di bot nominati (CCBot, FacebookBot, Meta-ExternalAgent/
+Fetcher, Diffbot, AI2Bot, Bytespider, cohere-ai, Webzio-Extended, YouBot,
+SmartViper) — chiaramente mirata a crawler di training AI e aggregatori di
+contenuto, non a scraper generici con User-Agent da browser normale.
+**Conclusione tecnica da sola: accessibile.** Ma l'accesso tecnico non è il
+problema qui — lo sono i ToS (punto 2) e la catena di diritti sulle quote
+(punto 3).
+
+**2. ToS — trovata una clausola esplicita e diretta sull'estrazione dati,
+più ampia di quelle già documentate per WhoScored/SofaScore.**
+Verificato via fetch diretto di `https://www.flashscore.com/terms-of-use/`
+(diretta.it fa parte dello stesso gruppo Livesport/Flashscore — nessuna
+pagina ToS separata trovata specifica per il dominio .it):
+
+> **Clausola 2.9 (Database Protection)**: "The contents of the database
+> contained in the Site ("Database Content") are protected by a special
+> right of the database provider. Unless otherwise agreed in writing with
+> us, Database Content may only be lawfully used to the extent and in the
+> manner provided by the applicable law. In particular, no extraction
+> (copying) or utilization (making available to the public) of Database
+> Content or of a qualitatively or quantitatively substantial part thereof
+> is permitted without our explicit consent."
+>
+> **Clausola 2.10 (Unauthorized Interference)**: "You must not use any
+> mechanism, tool, software or procedure that has or could adversely affect
+> the operation of our facilities... You may not burden our server... nor
+> may you assist any third party in such activity... Furthermore, you are
+> not permitted to use the content of the website by embedding, aggregating,
+> **scraping** or recreating it without our express consent."
+
+Differenza importante rispetto a WhoScored/SofaScore: quelle clausole
+nominano esplicitamente "betting platforms"/bookmaker come caso d'uso
+proibito, distinguendo (almeno linguisticamente) l'uso personale ordinario
+da un uso commerciale come piattaforma scommesse. Questa clausola **non fa
+questa distinzione — vieta scraping/estrazione in generale, senza un'eccezione
+esplicita per uso personale**. L'unico spiraglio è il riferimento della
+clausola 2.9 a "qualitatively or quantitatively substantial part" del
+database (linguaggio che ricalca il diritto sui generis sulle banche dati
+UE, Direttiva 96/9/CE, che distingue estrazione di parte sostanziale da
+estrazione insostanziale) — un'estrazione minima, per un numero ridotto di
+partite di interesse personale, potrebbe non costituire "parte sostanziale"
+sotto quella specifica normativa. Non è però una zona franca dichiarata dal
+sito, è un'interpretazione giuridica di un margine stretto — non da trattare
+come autorizzazione.
+
+**3. La quota non è di diretta.it — è del bookmaker (es. "Betson"), solo
+licenziata per la visualizzazione.** Verificato tramite la FAQ ufficiale
+Flashscore (`flashscore.com/faq/odds`): il sito mostra le quote **"from
+bookmakers we have agreements with, as they need to share their odds data
+with us"** — diretta.it/Flashscore è un aggregatore che **licenzia** le quote
+da bookmaker terzi per la visualizzazione sul proprio sito, non le possiede.
+Nessuna fonte trovata conferma "Betson" come fornitore dati generico
+dietro le quinte (a differenza di aggregatori noti come Betradar/Betgenius/
+Genius Sports) — è più plausibile sia uno dei bookmaker licenziati le cui
+quote live sono mostrate sul sito italiano, analogamente al caso verificato
+di Betnacional/Flashscore Brasile. **Questo significa che riutilizzare quella
+quota altrove non tocca solo i ToS di diretta.it, ma potenzialmente anche i
+termini dell'accordo (privato, non pubblico, non leggibile) tra Betson e
+diretta.it/Flashscore** — un accordo di licenza per la sola visualizzazione
+sul sito quasi certamente non include il diritto di diretta.it stesso a
+concedere a terzi l'estrazione e il riuso altrove, quindi a maggior ragione
+non lo concede implicitamente a un utente che fa scraping.
+
+**4. Classificazione: CATEGORIA C — da non implementare come provider dati
+diretto.** Motivazione, non solo applicazione meccanica della regola:
+- La clausola ToS è più ampia e assoluta di quella già accettata come
+  "rischio B" per WhoScored/SofaScore (nessuna eccezione per uso personale,
+  divieto di scraping/estrazione/embedding esplicito e diretto).
+- A differenza di WhoScored/SofaScore (dati/rating **proprietari** di quelle
+  piattaforme), qui il dato **non è nemmeno di diretta.it** — è di un terzo
+  (il bookmaker) che lo ha concesso in licenza solo per la visualizzazione:
+  un secondo livello di rischio che le altre fonti B non hanno.
+- Il caso d'uso è centrale e diretto (calcolo di edge/value reale su cui
+  potrebbero basarsi decisioni con soldi reali), non periferico come le
+  statistiche tattiche di WhoScored/SofaScore.
+
+**Nota sull'uso personale non distribuito** (v. sezione dedicata a inizio
+documento): anche applicando la stessa lettura "uso personale, mai
+ridistribuito" già usata per abbassare il rischio pratico di WhoScored/
+SofaScore, qui non è sufficiente a spostare la classificazione — il problema
+non è solo "il sito non vuole essere ridistribuito" (un rischio che l'uso
+personale attenua), ma che **la clausola vieta lo scraping in sé, e il dato
+appartiene a un terzo con cui questo progetto non ha alcun rapporto** — due
+motivi indipendenti dalla ridistribuzione. Per questo diretta.it/Betson resta
+C anche sotto la lente "uso personale", non B.
+
+**Stato nel codice**: nessun `OddsProvider` per questa fonte è stato
+implementato o verrà implementato — come richiesto per la categoria C, solo
+questa documentazione. Il Value/Odds Engine continua a usare esclusivamente
+le quote storiche già disponibili da football-data.co.uk (v. sopra) — il
+"value" mostrato resta calcolato contro quella fonte, mai contro ePlay24 o
+Betson/diretta.it, reali o simulate.
+
+**Nota storica**: questa fonte era stata precedentemente "chiusa" in questo
+documento perché il gap dati (corner/cartellini/falli) non esisteva più,
+**senza alcun audit legale condotto allora** — quella chiusura è ora superata
+da questo audit completo, motivato dal nuovo caso d'uso (quote).
+
 ### SOS Fanta / Gazzetta dello Sport (probabili formazioni)
 - Non fanno parte dell'elenco di fonti analizzate a fondo in questo progetto (il
   brief le nomina come fonti attese per le probabili formazioni di Serie A, ma non
@@ -307,30 +455,6 @@ prove (come nella verifica iniziale, fatta senza accesso di rete diretto) —
   (accordo/conflitto tra fonti → confidence) già implementata e testata in
   `app/engine/decision/lineup_reconciliation.py`, pronta per quando (e se) una di
   queste fonti verrà verificata e collegata.
-
----
-
-## Fonti valutate e chiuse senza audit legale (gap dati non più esistente)
-
-### diretta.it (e gruppo Flashscore/Livescore)
-
-**Chiuso definitivamente — non serve, non verrà implementato.** Era stata
-proposta come possibile fonte per corner/cartellini/falli partita-per-partita.
-Nel frattempo questi tre dati **sono stati ingeriti in bulk da
-football-data.co.uk** (colonne HC/AC/HY/AY/HR/AR/HF/AF, v. sopra) — l'intero
-gap che diretta.it avrebbe dovuto colmare non esiste più. Di conseguenza:
-- **Nessun audit legale (ToS/robots.txt/rate limit) è stato condotto** su
-  diretta.it — non è quindi classificato in nessuna delle categorie A/B/C
-  usate altrove in questo documento, e non va interpretato come "verificato
-  e non utilizzabile": è semplicemente **non necessario**, quindi mai valutato.
-- **Nessuno scraper o modulo di verifica è stato costruito** per questa fonte,
-  coerentemente con la regola di questo progetto di non costruire accesso a
-  una fonte prima di un audit esplicito.
-- Se in futuro servissero dati che football-data.co.uk non copre (eventi
-  minuto per minuto, tiri, possesso, sostituzioni), diretta.it tornerebbe a
-  essere un candidato — ma richiederebbe l'audit completo (ToS, robots.txt,
-  rate limit, classificazione A/B/C) da zero, non un semplice via libera
-  basato su questa nota.
 
 ---
 
@@ -353,3 +477,4 @@ gap che diretta.it avrebbe dovuto colmare non esiste più. Di conseguenza:
 | Gazzetta dello Sport | C | ❌ | Solo interfaccia |
 | ePlay24 | C | ❌ | Solo interfaccia — nessun accesso reale noto |
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
+| diretta.it / Betson (quote) | C | ❌ | ToS vieta scraping esplicitamente + quota di terzi in licenza display-only |
