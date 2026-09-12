@@ -1,0 +1,28 @@
+# Changelog
+
+Un rigo di sintesi per ogni commit di questa (lunga) sessione autonoma, in
+ordine cronologico, per una revisione rapida senza dover rileggere ogni
+commit singolarmente. Non sostituisce `git log`/i messaggi di commit
+completi — è un indice.
+
+## Sessione precedente (contesto)
+
+- `e5dba5b` — Vertical slice iniziale: motore di analisi pre-match (dati
+  sintetici, architettura completa).
+- `6055d0a` — Prima ingestione reale (7.600 partite EPL+Serie A) e primo
+  backtest walk-forward reale.
+- `cb791e8` — Mercati corner/cartellini, verifica definitiva accesso ePlay24,
+  tracciamento esplicito del rischio legale per fonte dati.
+
+## Sessione corrente
+
+- `540b242` — Binomiale negativa testata contro Poisson per corner/cartellini
+  (stesso backtest reale, stesso periodo): non risolve l'overconfidence nelle
+  code alte in modo consistente → **Poisson resta il modello di produzione**.
+  Chiusura definitiva di diretta.it (gap già coperto da football-data.co.uk).
+  Aggiunta `app/backtest/persistence.py` (aggregazione backtest → riga DB).
+- `6dffd09` — Roadmap item 1 (persistere risultati di backtest) completato
+  con numeri reali: 8 righe `ModelVersion`/`Backtest` scritte in DB.
+- `3b8aac6` — Roadmap item 2 (refit più frequente su tutte le stagioni)
+  completato: Brier/log loss migliorano leggermente, calibrazione code alte
+  non risolta del tutto.

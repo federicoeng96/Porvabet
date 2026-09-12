@@ -25,6 +25,7 @@ from app.engine.decision.count_market_estimates import (
     CountMarketEstimate,
     compute_count_market_estimates,
 )
+from app.engine.decision.reliability import model_reliability_for
 from app.engine.decision.risk_score import RiskFactors
 from app.engine.decision.selection import Candidate, build_risk_ladder
 from app.engine.decision.value import classify_alert, discrepancy_pct, expected_value
@@ -93,8 +94,11 @@ def run_analysis_for_match(db: Session, match_id: int, trigger: str = "manual_re
     db.add(analysis_version)
     db.flush()
 
+    from app.models.core import Season
+
+    competition_id = db.get(Season, match.season_id).competition_id
     candidates, prediction_rows = _build_candidates_and_predictions(
-        db, match, model, model_version, analysis_version, uncertainty
+        db, match, model, model_version, analysis_version, uncertainty, competition_id
     )
     if not candidates:
         raise InsufficientDataError(
@@ -304,6 +308,7 @@ def _build_candidates_and_predictions(
     model_version: ModelVersion,
     analysis_version: AnalysisVersion,
     uncertainty: float,
+    competition_id: int,
 ) -> tuple[list[Candidate], dict[str, Prediction]]:
     home_name, away_name = match.home_team.name, match.away_team.name
     result_probs = model.match_result_probabilities(home_name, away_name)
@@ -344,12 +349,26 @@ def _build_candidates_and_predictions(
             disc = discrepancy_pct(probability, odds_quote.decimal_odds)
             alert_level = classify_alert(disc)
 
+            reliability_estimate = model_reliability_for(
+                db, ModelFamily.DIXON_COLES_POISSON, category, competition_id, probability
+            )
+            # Fail-conservative when the backtest evidence doesn't support a
+            # confident estimate (see reliability.py docstring): 0.0 is the
+            # worst-case reliability, maximizing this factor's risk
+            # contribution rather than either (a) pretending 0.5-neutral like
+            # the placeholder this replaces, or (b) hiding the candidate from
+            # the ladder entirely — a market with a real quoted price and EV
+            # stays visible to the user, just correctly flagged as higher risk.
+            model_reliability = (
+                reliability_estimate.value if reliability_estimate.value is not None else 0.0
+            )
+
             factors = RiskFactors(
                 probability=probability,
                 bookmaker_odds=odds_quote.decimal_odds,
                 uncertainty=uncertainty,
                 data_quality=1.0,
-                model_reliability=0.5,
+                model_reliability=model_reliability,
                 prediction_stability=1.0,
                 lineup_dependency=0.0,
             )

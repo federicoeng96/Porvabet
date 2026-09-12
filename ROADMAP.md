@@ -77,15 +77,18 @@ non ancora affrontata, non solo una query.
 
 ### 2. ✅ Ricalibrare il refit più frequente su tutte le stagioni
 Eseguito: `refit_batch_days=7` (default) su tutte e 10 le stagioni disponibili
-(3.800 partite per campionato, EPL+Serie A). Confronto completo con la
-versione ridotta (21 giorni/6 stagioni) in BACKTEST_SPEC.md. Risultato onesto:
-Brier/log loss migliorano leggermente su tutti i segmenti (atteso, più dati),
-il gap di calibrazione nel bin 0.9-1.0 si dimezza per l'EPL ma resta ampio per
-la Serie A (n piccolo in entrambi i casi, 38-50 — parte del miglioramento può
-essere rumore campionario) — la ricalibrazione **non risolve da sola**
-l'overconfidence nelle code alte, coerente con la conclusione già raggiunta
-per corner/cartellini (punto 4 sotto): serve calibrazione post-hoc (punto 3
-sotto) o feature aggiuntive, non solo più dati di allenamento.
+(3.800 partite per campionato, EPL+Serie A). Confronto completo in
+BACKTEST_SPEC.md — **corretto un errore di etichettatura**: il confronto
+isola solo l'effetto stagioni (6→10) a refit=7 fisso, non refit 21→7 come
+scritto in una prima stesura (v. BACKTEST_SPEC.md per il dettaglio). Risultato
+onesto: Brier/log loss migliorano leggermente su tutti i segmenti (atteso,
+più stagioni di storia), il gap di calibrazione nel bin 0.9-1.0 si dimezza per
+l'EPL ma resta ampio per la Serie A (n piccolo in entrambi i casi, 38-50 —
+parte del miglioramento può essere rumore campionario) — la ricalibrazione
+**non risolve da sola** l'overconfidence nelle code alte, coerente con la
+conclusione già raggiunta per corner/cartellini (punto 4 sotto): serve
+calibrazione post-hoc (punto 3 sotto) o feature aggiuntive, non solo più dati
+di allenamento.
 
 ### 3. Calibrazione dei pesi/soglie/probabilità
 Il backtest reale mostra overconfidence nelle probabilità alte (bin 0.9-1.0:

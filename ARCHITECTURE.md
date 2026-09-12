@@ -100,6 +100,24 @@ richiede toccare `engine/` né `api/`.
    `training_data_cutoff` esplicito — un backtest può sempre verificare che nessuna
    predizione abbia usato un modello addestrato "nel futuro" rispetto alla partita.
 
+## Backtest → DB → risk score live: il loop è chiuso
+
+`scripts/persist_backtest_results.py` scrive righe `Backtest`/`ModelVersion`
+reali in DB (non più solo un report testuale in BACKTEST_SPEC.md — v. ROADMAP.md
+punto 1). `app/engine/decision/reliability.py` le legge da lì all'analisi live:
+`run_analysis_for_match` → `_build_candidates_and_predictions` →
+`model_reliability_for(db, family, market_category, competition_id, probability)`
+→ fattore `model_reliability` in `RiskFactors`. Non c'è un servizio/cache
+separato: è una query diretta sulla riga `Backtest` più recente per quel
+segmento, eseguita ad ogni "AGGIORNA ANALISI" — accettabile a questo volume
+(poche righe `Backtest` per competizione/mercato), da rivedere solo se il
+numero di segmenti backtestati crescesse di ordini di grandezza. Se per un
+segmento non esiste ancora un backtest persistito, o nessun bin della sua
+curva di calibrazione ha abbastanza osservazioni, la funzione ritorna "non
+stimabile" esplicitamente (mai un numero indovinato) e il chiamante applica un
+valore di caso peggiore — v. MODEL_SPEC.md "Incertezza, qualità dati,
+affidabilità modello".
+
 ## AnalysisVersion / RiskSelection — perché cambiare rischio non ricalcola nulla
 
 `run_analysis_for_match` (in `app/engine/decision/analysis_runner.py`) è l'unica

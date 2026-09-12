@@ -1,19 +1,33 @@
-"""Run the real walk-forward backtests (goals/1X2/O-U and corners/cards) that
-were previously executed with ad-hoc scripts and reported by hand in
-BACKTEST_SPEC.md, and persist each segment as a `ModelVersion` + `Backtest`
-row (ROADMAP.md item 1).
+"""Run the real walk-forward backtests (goals/1X2/O-U and corners/cards)
+against ALL available real data and persist each segment as a `ModelVersion` +
+`Backtest` row (ROADMAP.md item 1) — the source of truth `model_reliability`
+in the live analysis endpoint reads from (see `app/engine/decision/reliability.py`),
+replacing the previous fixed 0.5 placeholder.
 
-Same data, same seasons, same protocol already documented in BACKTEST_SPEC.md:
-EPL + Serie A, seasons 2019/20-2024/25, `refit_batch_days=21`. This script adds
-no new numbers — it is the missing aggregation step so those already-reported
-results are actually queryable from the DB (needed before `model_reliability`
-in the live analysis endpoint can reference a real backtest instead of the
-current neutral 0.5 placeholder — see `analysis_runner.py`).
+Goals markets (MATCH_RESULT/TOTAL_GOALS): `run_walk_forward_backtest` at its
+own default `refit_batch_days` (7 — see `app/backtest/runner.py`), over ALL 10
+ingested seasons per competition. An earlier version of this script (see git
+history) claimed `refit_batch_days=21` in this docstring while the code
+actually used the module default (7) on only 6 seasons — a real labeling bug,
+not a hidden change of numbers: the bug was in the prose here and in
+BACKTEST_SPEC.md's comparison table, not in the persisted metrics themselves
+(`ModelVersion.hyperparameters_json` always correctly recorded 7). Fixed by
+widening to all 10 seasons, which is also exactly what ROADMAP.md item 2
+concluded should replace the reduced 6-season approximation — so this run now
+doubles as that item's production data, not just a bugfix.
 
-Corners/cards are persisted with `PoissonCountModel`, the model actually in
-production (see MODEL_SPEC.md / BACKTEST_SPEC.md "Poisson vs binomiale
-negativa" — NB was tested and not adopted). Run once against the dev DB
-already populated by `scripts/ingest_football_data.py`.
+Corners/cards: `run_count_market_backtest` with `PoissonCountModel` (the
+model actually in production — see MODEL_SPEC.md / BACKTEST_SPEC.md "Poisson
+vs binomiale negativa", NB was tested and not adopted) at `refit_batch_days=21`
+(unchanged from the tested/decided protocol — only the negative-binomial
+*comparison* used 6 seasons for time-budget reasons; the Poisson-only
+production fit is fast enough to run on the full 10-season history), also
+widened to all 10 seasons for the same reason as goals markets above.
+
+Run against the dev DB already populated by `scripts/ingest_football_data.py`.
+Re-running this script does not delete previous rows — it inserts a fresh
+`ModelVersion`/`Backtest` pair with a new `run_at`; `reliability.py` always
+reads the most recent one per (family, market_category, competition).
 """
 
 from datetime import date
@@ -33,14 +47,17 @@ from app.models.match import Match
 from app.models.stats import TeamMatchStats
 from app.providers.base.dto import HistoricalMatchRecord
 
-RECENT_SEASONS = {"2019/2020", "2020/2021", "2021/2022", "2022/2023", "2023/2024", "2024/2025"}
-VERSION_LABEL = "2026.09.12-backtest-real"
+ALL_SEASONS = {
+    "2015/2016", "2016/2017", "2017/2018", "2018/2019", "2019/2020",
+    "2020/2021", "2021/2022", "2022/2023", "2023/2024", "2024/2025",
+}
+VERSION_LABEL = "2026.09.12b-full-history"  # ModelVersion.version_label is varchar(32)
 
 
 def _season_matches(db, competition_code: str) -> list[Match]:
     comp = db.scalar(select(Competition).where(Competition.code == competition_code))
     seasons = db.scalars(select(Season).where(Season.competition_id == comp.id)).all()
-    season_ids = [s.id for s in seasons if s.label in RECENT_SEASONS]
+    season_ids = [s.id for s in seasons if s.label in ALL_SEASONS]
     return list(
         db.scalars(select(Match).where(Match.season_id.in_(season_ids), Match.home_goals_ft.is_not(None))).all()
     )
@@ -121,7 +138,7 @@ def persist_goal_markets(db, competition_code: str) -> None:
         print(f"{competition_code}: no resolved goal-market predictions, skipping")
         return
 
-    hyperparameters = {"refit_batch_days": REFIT_BATCH_DAYS, "seasons": sorted(RECENT_SEASONS)}
+    hyperparameters = {"refit_batch_days": REFIT_BATCH_DAYS, "seasons": sorted(ALL_SEASONS)}
     leakage_note = (
         "Walk-forward: model refit only on matches strictly before each batch's "
         "earliest kickoff (see app/backtest/runner.py docstring)."
@@ -158,7 +175,7 @@ def persist_goal_markets(db, competition_code: str) -> None:
 def persist_count_markets(db, competition_code: str) -> None:
     comp = db.scalar(select(Competition).where(Competition.code == competition_code))
     matches = _season_matches(db, competition_code)
-    hyperparameters = {"refit_batch_days": 21, "seasons": sorted(RECENT_SEASONS), "model": "PoissonCountModel"}
+    hyperparameters = {"refit_batch_days": 21, "seasons": sorted(ALL_SEASONS), "model": "PoissonCountModel"}
     leakage_note = (
         "Walk-forward: model refit only on matches strictly before each batch's "
         "earliest kickoff (see app/backtest/count_market_runner.py docstring). "

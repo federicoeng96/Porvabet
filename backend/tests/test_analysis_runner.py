@@ -2,18 +2,22 @@
 round-robin of fictional teams (not real fixtures)."""
 
 import random
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
+from app.backtest.metrics import BetRecord
+from app.backtest.persistence import persist_backtest_run
 from app.engine.decision.analysis_runner import (
     MIN_TRAINING_MATCHES,
     InsufficientDataError,
     run_analysis_for_match,
 )
-from app.ingestion.match_ingestion import ingest_historical_match
-from app.models.prediction import AnalysisVersion, RiskSelection
+from app.ingestion.match_ingestion import get_or_create_competition, ingest_historical_match
+from app.models.enums import MarketCategory, ModelFamily
+from app.models.market import Market, MarketOutcome
+from app.models.prediction import AnalysisVersion, Prediction, RiskSelection
 from app.providers.base.dto import HistoricalMatchRecord
 
 SYNTHETIC_TEAMS = ["Synth A", "Synth B", "Synth C", "Synth D"]
@@ -79,6 +83,73 @@ def test_run_analysis_produces_full_ladder(db_session):
 
     mains = [s for s in selections if s.rank == 1]
     assert len(mains) == 10
+
+
+def _well_calibrated_full_range_bets() -> list[BetRecord]:
+    """40 bets per decile, each decile's win rate == its own predicted
+    probability — perfectly calibrated everywhere, and every bin has
+    n=40 >= reliability.MIN_BIN_COUNT, so whatever probability a real
+    candidate lands on, it finds a trustworthy, well-calibrated bin."""
+    bets = []
+    for decile in range(10):
+        p = decile / 10 + 0.05
+        n_won = round(40 * p)
+        for i in range(40):
+            bets.append(BetRecord(probability=p, bookmaker_odds=1.5, won=(i < n_won)))
+    return bets
+
+
+def test_model_reliability_lowers_risk_once_a_real_backtest_is_persisted(db_session):
+    """Before any Backtest row exists for this competition/market, reliability
+    falls back to the conservative 0.0 (see reliability.py). Once a real,
+    well-calibrated Backtest is persisted, the same candidate's risk score
+    should go down — proof the wiring in analysis_runner.py actually reads
+    it, not just a unit test of reliability.py in isolation."""
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    target = matches[-1]
+
+    first = run_analysis_for_match(db_session, target.id)
+    db_session.flush()
+    first_home_risk = _match_result_home_risk_raw(db_session, first.analysis_version_id)
+    assert first_home_risk is not None
+
+    competition = get_or_create_competition(db_session, "EPL")
+    db_session.flush()
+    persist_backtest_run(
+        db_session,
+        bets=_well_calibrated_full_range_bets(),
+        model_family=ModelFamily.DIXON_COLES_POISSON,
+        market_category="MATCH_RESULT",
+        competition_id=competition.id,
+        version_label="test-reliability-wiring",
+        window_start=date(2023, 8, 1),
+        window_end=date(2024, 5, 1),
+    )
+    db_session.flush()
+
+    second = run_analysis_for_match(db_session, target.id)
+    db_session.flush()
+    second_home_risk = _match_result_home_risk_raw(db_session, second.analysis_version_id)
+    assert second_home_risk is not None
+
+    assert second_home_risk < first_home_risk
+
+
+def _match_result_home_risk_raw(db_session, analysis_version_id: int) -> float | None:
+    row = db_session.execute(
+        select(RiskSelection.risk_score_raw)
+        .join(Prediction, RiskSelection.prediction_id == Prediction.id)
+        .join(MarketOutcome, Prediction.market_outcome_id == MarketOutcome.id)
+        .join(Market, MarketOutcome.market_id == Market.id)
+        .where(
+            RiskSelection.analysis_version_id == analysis_version_id,
+            Market.category == MarketCategory.MATCH_RESULT,
+            MarketOutcome.code == "HOME",
+        )
+        .limit(1)
+    ).first()
+    return row[0] if row else None
 
 
 def test_rerunning_analysis_supersedes_previous_version(db_session):

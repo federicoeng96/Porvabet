@@ -121,12 +121,27 @@ predizione, dipendenza da formazioni non ufficiali. Nel vertical slice:
   v. ROADMAP per PyMC).
 - **qualità dati**: fissa a 1.0 quando la quota di chiusura è presente (dati
   completi); scenderebbe con dati mancanti/proiettati.
-- **affidabilità modello**: nel backtest è una media mobile del Brier score
-  *storico* (solo su predizioni già risolte prima nel tempo, mai sulla partita
-  corrente — v. BACKTEST_SPEC.md); nell'endpoint di analisi live è oggi un
-  valore neutro (0.5) finché non esiste ancora uno storico di backtest persistito
-  collegato al `ModelVersion` in uso (v. ROADMAP: collegare `Backtest.brier_score`
-  al `ModelVersion` corrente).
+- **affidabilità modello**: **non più un placeholder**. `app/engine/decision/
+  reliability.py` (`model_reliability_for`) legge la riga `Backtest` più
+  recente per (model_family, market_category, competition) — le stesse righe
+  reali persistite da `scripts/persist_backtest_results.py` (v. ROADMAP.md
+  punto 1) — e ne deriva l'affidabilità dal **gap di calibrazione**
+  (`|predicted_mean − observed_frequency|` nel bin della curva di calibrazione
+  in cui cade la probabilità del candidato corrente), non da Brier
+  score/log loss/hit rate: questi ultimi mescolano discriminazione e
+  calibrazione, mentre "l'affidabilità di questa probabilità specifica" è
+  esattamente ciò che il gap di calibrazione misura — ed è precisamente il
+  problema che BACKTEST_SPEC.md documenta (overconfidence concentrata nelle
+  fasce alte). Se il bin specifico ha troppe poche osservazioni
+  (`MIN_BIN_COUNT=30`), la stima ricade su una media pesata dei bin del
+  segmento con dati sufficienti; se **nessun** bin del segmento ne ha
+  abbastanza, la funzione ritorna esplicitamente "non stimabile" invece di
+  forzare un numero — nel qual caso `analysis_runner.py` applica **0.0** (il
+  caso peggiore, non 0.5 neutro): il mercato resta comunque visibile
+  all'utente (ha comunque una quota reale e un EV), ma penalizzato al massimo
+  su questo fattore del rischio — fail-conservative, non un'esclusione
+  silenziosa. Se in futuro esistono più `ModelVersion` per lo stesso segmento,
+  viene sempre usata la riga `Backtest` più recente (`run_at` più alto).
 - **stabilità predizione**: confronto tra `AnalysisVersion` consecutive per la
   stessa partita — nel vertical slice è 1.0 alla prima analisi (nessun confronto
   possibile) e andrebbe popolato reale al secondo "AGGIORNA ANALISI".

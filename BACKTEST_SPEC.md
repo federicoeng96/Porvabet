@@ -137,34 +137,51 @@ scelta di tempo, non un modo per nascondere risultati sfavorevoli.
 2), completato**: con più tempo a disposizione, il backtest è stato rieseguito
 nella configurazione di default (`refit_batch_days=7`, tutte le 10 stagioni,
 3.800 partite per campionato invece di 2.280) — 192.8s per l'EPL, 170.9s per
-la Serie A. Confronto diretto con la configurazione ridotta sopra:
+la Serie A.
 
-| Segmento | n (21d/6 stag.) | Brier (21d/6) | LogLoss (21d/6) | n (7d/10 stag.) | Brier (7d/10) | LogLoss (7d/10) |
+**Correzione di un errore di etichettatura (onestà > coerenza con quanto
+scritto prima)**: la tabella di confronto qui sotto, in una prima stesura di
+questo documento, etichettava le colonne "prima" come `21d/6 stagioni`. È
+sbagliato: quei numeri venivano dalla prima persistenza reale in DB
+(`scripts/persist_backtest_results.py`, ROADMAP.md punto 1), che per un bug
+nello script usava `refit_batch_days=7` (il default di
+`app/backtest/runner.py`), non 21 — il valore salvato in
+`ModelVersion.hyperparameters_json` era corretto (7), solo il testo
+descrittivo qui e nel docstring dello script erano sbagliati. Il vero run a
+21 giorni/6 stagioni esiste (sezione "Validazione empirica" sopra, con le
+metriche per-livello-di-rischio e il bin 0.9–1.0 EPL: predetto 92.6%,
+osservato 71.4%, n=42) ma **non con Brier/log loss per mercato a questa
+precisione** — quindi il confronto seguente isola correttamente **solo
+l'effetto del numero di stagioni** (6 vs 10), tenendo il refit fisso a 7
+giorni su entrambi i lati, non un confronto 21d-vs-7d:
+
+| Segmento | n (7d/6 stag., DB) | Brier (7d/6) | LogLoss (7d/6) | n (7d/10 stag.) | Brier (7d/10) | LogLoss (7d/10) |
 |---|---|---|---|---|---|---|
 | EPL MATCH_RESULT | 13.158 | 0.1948 | 0.5768 | 27.964 | 0.1872 | 0.5628 |
 | EPL TOTAL_GOALS | 8.772 | 0.2476 | 0.6898 | 9.096 | 0.2441 | 0.6817 |
 | Serie A MATCH_RESULT | 13.122 | 0.1955 | 0.5777 | 27.960 | 0.1849 | 0.5545 |
 | Serie A TOTAL_GOALS | 8.748 | 0.2483 | 0.6918 | 9.080 | 0.2465 | 0.6869 |
 
-Brier e log loss migliorano leggermente su tutti e 4 i segmenti con più dati e
-refit più frequente — nella direzione attesa, non sorprendente. Hit rate
-MATCH_RESULT combinato scende leggermente (33.3%→31.0% EPL, 33.3%→30.6% Serie
-A): non è una regressione del modello, riflette le 4 stagioni più vecchie
-(2015/16–2018/19) ora incluse, probabilmente meno prevedibili o con dati
-quote di qualità inferiore — non ancora indagato nel dettaglio.
+Brier e log loss migliorano leggermente su tutti e 4 i segmenti con più
+stagioni di storia (refit invariato a 7 giorni tra le due colonne) — nella
+direzione attesa, non sorprendente. Hit rate MATCH_RESULT combinato scende
+leggermente (33.3%→31.0% EPL, 33.3%→30.6% Serie A): non è una regressione del
+modello, riflette le 4 stagioni più vecchie (2015/16–2018/19) ora incluse,
+probabilmente meno prevedibili o con dati quote di qualità inferiore — non
+ancora indagato nel dettaglio.
 
 Calibrazione nel bin più alto (0.9–1.0), lo stesso che mostrava overconfidence
 marcata sopra:
 
 | Segmento | n | Predetto (7d/10) | Osservato (7d/10) | Gap |
 |---|---|---|---|---|
-| EPL | 50 | 93.3% | 84.0% | +9.3 punti (era +21.2 punti con 21d/6 stagioni, n=42) |
-| Serie A | 38 | 93.0% | 73.7% | +19.3 punti |
+| EPL | 50 | 93.3% | 84.0% | +9.3 punti (era +21.2 punti nel run originale 21d/6 stagioni, n=42 — v. "Validazione empirica" sopra; qui **sia** le stagioni **che** il refit sono cambiati, non un confronto isolato come la tabella Brier/log loss sopra) |
+| Serie A | 38 | 93.0% | 73.7% | +19.3 punti (nessun dato comparabile dal run originale per la Serie A) |
 
 Il gap si dimezza per l'EPL con più dati, ma resta ampio per la Serie A — e
 in entrambi i casi n è piccolo (38-50), quindi parte del miglioramento
-potrebbe essere rumore campionario piuttosto che un effetto reale di
-più dati/refit più frequente. **Conclusione onesta**: la ricalibrazione dà un
+potrebbe essere rumore campionario piuttosto che un effetto reale di più
+stagioni di storia. **Conclusione onesta**: la ricalibrazione dà un
 guadagno di precisione reale ma modesto (Brier/log loss), non risolve da sola
 il problema di overconfidence nelle code alte (v. anche calibrazione
 post-hoc, punto 3 di ROADMAP.md) — coerente con quanto già osservato per

@@ -28,7 +28,9 @@ class RiskFactors:
     bookmaker_odds: float  # decimal odds, > 1
     uncertainty: float  # 0..1, model's own uncertainty about `probability` (e.g. from posterior/CI width)
     data_quality: float  # 0..1, 1 = complete/reliable inputs, 0 = sparse/unreliable
-    model_reliability: float  # 0..1, from this model_version's own backtest calibration (Brier-derived)
+    model_reliability: float  # 0..1, from the real backtest calibration curve for this
+    # market/competition (see app/engine/decision/reliability.py) — 0.0 when there isn't
+    # enough backtest evidence to estimate it with confidence (fail-conservative, not a guess)
     prediction_stability: float  # 0..1, 1 = probability unchanged vs previous analysis version
     lineup_dependency: float  # 0..1, 0 if not lineup-dependent, higher if it depends on an
     # unofficial/conflicting probable lineup
