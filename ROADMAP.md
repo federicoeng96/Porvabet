@@ -47,16 +47,33 @@ riflette cosa è già fatto e cosa manca davvero).
     alte (v. BACKTEST_SPEC.md, confronto completo). Decisione basata sui dati:
     **Poisson resta il modello di produzione**, NB resta nel codice come
     alternativa testata, non attivata — non un'assunzione a priori.
+13. ✅ **Persistenza reale dei risultati di backtest** (`app/backtest/persistence.py`
+    + `scripts/persist_backtest_results.py`): 8 righe `ModelVersion`/`Backtest`
+    scritte in DB per EPL+Serie A × {MATCH_RESULT, TOTAL_GOALS, CORNERS,
+    CARDS}, dagli stessi backtest reali già in BACKTEST_SPEC.md (v. punto 1
+    sotto per il dettaglio e per cosa resta aperto).
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
-### 1. Persistere i risultati di backtest
-Il backtest reale (punto 10 sopra) è stato eseguito con uno script ad-hoc e i
-risultati riportati manualmente in BACKTEST_SPEC.md — manca ancora il codice
-che aggrega l'output di `run_walk_forward_backtest` con
-`app/backtest/metrics.py` e lo scrive in una riga `Backtest` (tabella già nello
-schema). Necessario prima di poter collegare `model_reliability` reale (da
-backtest, non valore neutro) nell'endpoint di analisi live.
+### 1. ✅ Persistere i risultati di backtest
+`app/backtest/persistence.py` (`persist_backtest_run`) aggrega l'output già
+prodotto da `run_walk_forward_backtest`/`run_count_market_backtest` con
+`app/backtest/metrics.py` e scrive una riga `ModelVersion` + `Backtest` (test
+in `tests/test_backtest_persistence.py`). Eseguito realmente con
+`scripts/persist_backtest_results.py` sugli stessi dati/stagioni già in
+BACKTEST_SPEC.md (EPL + Serie A, 2019/20–2024/25): 8 righe reali ora in DB
+(`MATCH_RESULT`/`TOTAL_GOALS` con Dixon-Coles, `CORNERS`/`CARDS` con
+`PoissonCountModel`, il modello di produzione — v. punto 12). Nessun numero
+nuovo rispetto a BACKTEST_SPEC.md, solo la stessa evidenza ora interrogabile
+dal DB invece che riportata solo a mano.
+
+**Non ancora fatto** (fuori scope per questo item, esplicitamente rimandato):
+collegare `model_reliability` reale (letto da queste righe `Backtest`)
+nell'endpoint di analisi live — oggi `analysis_runner.py` usa ancora
+`model_reliability=0.5` come placeholder neutro. Questo richiede decidere
+quale riga `Backtest` è "quella corrente" per un dato mercato/competizione
+(la più recente? quella con la finestra più ampia?) — una domanda di design
+non ancora affrontata, non solo una query.
 
 ### 2. Ricalibrare il refit più frequente su tutte le stagioni
 Il backtest reale eseguito usa `refit_batch_days=21` su 6 stagioni per
