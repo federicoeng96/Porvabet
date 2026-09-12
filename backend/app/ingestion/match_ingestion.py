@@ -59,6 +59,7 @@ UNDERSTAT_TEAM_NAME_ALIASES: dict[str, str] = {
     "AC Milan": "Milan",
     "West Bromwich Albion": "West Brom",
     "SPAL 2013": "Spal",
+    "Parma Calcio 1913": "Parma",
 }
 
 
