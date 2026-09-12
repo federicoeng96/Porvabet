@@ -46,3 +46,10 @@ completi — è un indice.
   documentato onestamente invece di forzare un workaround (bypassare
   Cloudflare richiederebbe un browser reale, decisione non presa
   autonomamente).
+- `5620547` — Aggiornato CHANGELOG.
+- `1819e94` — Roadmap item 10 (parte 1): endpoint batch
+  `POST /matches/analyze-batch` al posto di N chiamate parallele dal
+  frontend. Trovato e corretto un gap reale nell'isolamento delle
+  transazioni nei test (`join_transaction_mode="create_savepoint"`),
+  scoperto scrivendo i primi test a livello API del progetto. Verificato
+  anche end-to-end con curl contro il DB dev reale.
