@@ -21,12 +21,13 @@ never guessed/created here.
 
 import time
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.session import SessionLocal
 from app.ingestion.match_ingestion import get_or_create_source, resolve_understat_team_name
 from app.models.core import Competition, Season
 from app.models.enums import DataSourceCategory
+from app.models.match import Match
 from app.models.stats import TacticalFeature
 from app.providers.understat.provider import UnderstatProvider
 
@@ -55,6 +56,30 @@ def persist_season(db, provider: UnderstatProvider, source, competition_code: st
     if season is None:
         print(f"{competition_code} {season_label}: no matching Season row in DB, skipping")
         return
+
+    matches = db.execute(select(Match).where(Match.season_id == season.id)).scalars().all()
+    if matches:
+        team_ids = {m.home_team_id for m in matches} | {m.away_team_id for m in matches}
+        expected_appearances = len(matches) * 2
+        dmin = min(m.kickoff_utc for m in matches).date()
+        dmax = max(m.kickoff_utc for m in matches).date()
+        existing_count = db.scalar(
+            select(func.count())
+            .select_from(TacticalFeature)
+            .where(
+                TacticalFeature.team_id.in_(team_ids),
+                TacticalFeature.as_of_date >= dmin,
+                TacticalFeature.as_of_date <= dmax,
+                TacticalFeature.feature_name == "xg",
+            )
+        )
+        if existing_count >= expected_appearances:
+            print(
+                f"{competition_code} {season_label}: already fully persisted "
+                f"({existing_count}/{expected_appearances} team-appearances) — "
+                "skipping the live understat request entirely"
+            )
+            return
 
     stats = provider.get_team_match_tactical_stats(competition_code, season_label)
     resolved_cache: dict[str, object] = {}
@@ -150,14 +175,19 @@ def main() -> None:
     try:
         # understat has no documented rate limit (unlike fbref's stated
         # 10/min), but robots.txt disallows all crawling of this site
-        # (category B, personal use accepted) — a short pause between the
-        # ~20 requests this run makes is a considerate default, not a
-        # published requirement.
+        # (category B, personal use accepted). A short 2s pause was tried
+        # first; repeated `RemoteProtocolError: Server disconnected without
+        # sending a response` on a growing fraction of requests during this
+        # session's real backfill run looked like an escalating rate-limit/
+        # soft-block response, not ordinary network flakiness — bumped to
+        # 10s and this script is no longer meant to be retried in a tight
+        # loop (see ROADMAP.md): one run, skip what it cannot reach, resume
+        # later rather than hammering the source to force it through.
         first = True
         for competition_code in COMPETITIONS:
             for season_label in SEASONS:
                 if not first:
-                    time.sleep(2.0)
+                    time.sleep(10.0)
                 first = False
                 persist_season(db, provider, source, competition_code, season_label)
     finally:
