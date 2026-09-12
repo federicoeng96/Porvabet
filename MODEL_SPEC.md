@@ -38,15 +38,27 @@ evento — coerente con l'indicazione del brief.
   trasferibilità per le neopromosse (menzionato nel brief) è pianificato come
   un peso aggiuntivo sui match di stagioni precedenti in categorie diverse
   (v. ROADMAP), non ancora implementato.
-- **Dati tattici reali ora disponibili, non ancora usati dal modello**: xG,
-  xGA, npxG, PPDA e deep completions per partita (da understat.com, v.
-  DATA_SOURCES.md categoria B) sono stati estratti e persistiti in
-  `TacticalFeature` per EPL+Serie A 2023/24 (`scripts/
-  ingest_understat_tactical_features.py`, 10.640 righe reali, valore grezzo
-  per singola partita — non ancora una media mobile no-leakage). **Nessun
-  modello statistico li legge ancora**: Dixon-Coles resta basato solo sui
-  gol. Sono la base dati per il futuro Matchup Engine (ROADMAP.md punto 5),
-  non ancora una feature attiva in produzione.
+- **Correzione xG di Dixon-Coles — testata sui dati reali, non attivata di
+  default.** xG, xGA, npxG, PPDA e deep completions per partita (da
+  understat.com, v. DATA_SOURCES.md categoria B) sono stati estratti e
+  persistiti in `TacticalFeature` per EPL+Serie A 2023/24 (`scripts/
+  ingest_understat_tactical_features.py`, 10.640 righe reali). `app/engine/
+  statistical/tactical_adjustment.py` usa il rapporto xG/gol-reali di una
+  squadra (solo partite precedenti, mai leakage) per correggere il lambda/mu
+  di Dixon-Coles prima di calcolare le probabilità finali — un fattore
+  esplicitamente clippato a [0.75, 1.33] (limite di sicurezza dichiarato, non
+  tarato sui risultati del backtest), applicato solo quando esistono >= 5
+  partite precedenti con dato xG per quella squadra (altrimenti il modello
+  resta quello attuale, senza correzione — v. BACKTEST_SPEC.md "xG-adjusted
+  Dixon-Coles" per il perché di questo comportamento).
+  **Risultato del backtest reale (EPL+Serie A 2023/24, unica stagione
+  coperta)**: migliora Brier/log loss/calibrazione nelle fasce alte per
+  l'**EPL** su entrambi i mercati, ma **non aiuta la Serie A** (leggermente
+  peggio, e introduce overconfidence in un bin che nel modello raw era già
+  ben calibrato). **Decisione basata sui numeri**: non attivata di default
+  per nessuno dei due campionati — un beneficio specifico a un solo
+  campionato, su una sola stagione di dati, non è una base solida per
+  un'attivazione uniforme. Il codice resta testato e pronto, non cancellato.
 - **Intelligence Engine — solo il livello di validazione, non un generatore
   di segnali**: `app/engine/intelligence/validation.py` confronta
   un'ipotesi qualitativa (`IntelligenceSignal`, es. "pressing più aggressivo

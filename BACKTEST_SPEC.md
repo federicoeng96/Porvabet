@@ -369,6 +369,70 @@ dati, né una trasformazione scalare post-hoc, ma **feature esplicative
 mancanti nella struttura media** (arbitro per i cartellini, tattica per i
 corner, feature aggiuntive non ancora identificate per i gol/1X2).
 
+## xG-adjusted Dixon-Coles — confronto reale, decisione basata sui dati
+
+Le `TacticalFeature` reali (xG per partita, da understat, v. ROADMAP.md
+punto 5) sono state usate per correggere le attese di gol di Dixon-Coles:
+`compute_xg_adjustment_factor` (`app/engine/statistical/tactical_adjustment.py`)
+calcola, per ogni squadra e solo dalle partite strettamente precedenti alla
+data di previsione, il rapporto tra xG medio e gol realmente segnati — un
+fattore >1 indica una squadra che crea occasioni migliori di quante ne
+concretizzi (sottoperformance, "sfortunata"), <1 il contrario. Il fattore
+(clippato a [0.75, 1.33], un limite di sicurezza dichiarato, non calibrato
+sui risultati del backtest) moltiplica il lambda/mu grezzo di Dixon-Coles
+prima di calcolare le probabilità finali — mai applicato quando una squadra
+non ha almeno 5 partite precedenti con dato xG (nessun numero indovinato).
+
+**Scope**: le `TacticalFeature` coprono solo la stagione 2023/24 (v. ROADMAP.md
+punto 5) — il confronto è quindi limitato a EPL+Serie A 2023/24, walk-forward,
+stesso protocollo (refit=7gg, `MIN_TRAINING_MATCHES=80`) già usato altrove.
+Non è un confronto su tutte le 10 stagioni: dove il dato xG non esiste, il
+modello resta quello attuale senza alcuna correzione (v. sotto per come
+questo si traduce in codice).
+
+| Segmento | n | Brier raw | Brier xG-adj | LogLoss raw | LogLoss xG-adj |
+|---|---|---|---|---|---|
+| EPL MATCH_RESULT | 900 | 0.1898 | **0.1870** | 0.5662 | **0.5589** |
+| EPL TOTAL_GOALS | 600 | 0.2403 | **0.2327** | 0.6767 | **0.6591** |
+| Serie A MATCH_RESULT | 900 | **0.1974** | 0.1986 | 0.5953 | 0.5909 |
+| Serie A TOTAL_GOALS | 600 | **0.2552** | 0.2580 | 0.7120 | 0.7126 |
+
+(`n` = ogni candidato H/D/A o OVER/UNDER con quota reale disponibile, una
+volta per partita — non replicato per i 10 livelli di rischio, per isolare
+la qualità della probabilità dal meccanismo di selezione del ladder.)
+
+Calibrazione nelle fasce alte (0.7+), lo stesso confronto:
+
+| Segmento | Bin | Gap raw | Gap xG-adj |
+|---|---|---|---|
+| EPL MATCH_RESULT | 0.7–0.8 (n=42→36) | +0.121 | **+0.075** |
+| EPL MATCH_RESULT | 0.9–1.0 (n=7→5) | +0.219 | **+0.125** |
+| EPL TOTAL_GOALS | 0.8–0.9 (n=10→11) | +0.333 | **+0.110** |
+| Serie A MATCH_RESULT | 0.7–0.8 (n=28) | −0.005 (già buono) | **+0.098** (peggiora) |
+| Serie A MATCH_RESULT | 0.9–1.0 (n=9→3) | +0.258 | **+0.608** (peggiora, n piccolo) |
+| Serie A TOTAL_GOALS | 0.8–0.9 (n=16→5) | +0.320 | **+0.642** (peggiora, n piccolo) |
+
+**Conclusione onesta, incoerente tra campionati — non attivata di default.**
+L'aggiustamento xG **migliora davvero** Brier, log loss e calibrazione nelle
+fasce alte per l'**EPL**, su entrambi i mercati. Per la **Serie A** non aiuta
+— Brier/log loss leggermente peggiori, e nel bin 0.7-0.8 di MATCH_RESULT
+(l'unico già ben calibrato nel modello raw) l'aggiustamento introduce
+overconfidence dove prima non c'era. Questo non è il pattern "aiuta ovunque
+un po'" che giustificherebbe un'attivazione di default — è un miglioramento
+reale ma **specifico dell'EPL**, di cui questa sessione non ha un'ipotesi
+verificata (possibile rumore di campionamento vista la finestra di un solo
+campionato/stagione, o una differenza reale nello stile di gioco/varianza di
+finalizzazione tra i due campionati — nessuna delle due è stata testata qui).
+
+**Decisione**: `compute_xg_adjustment_factor`/`apply_tactical_adjustment`
+restano nel codice, testati e funzionanti, **non collegati** al layer di
+analisi live (`analysis_runner.py` continua a usare Dixon-Coles senza
+correzione xG per tutte le partite, EPL e Serie A comprese) — non per
+mancanza dell'implementazione, ma perché il backtest non giustifica
+un'attivazione uniforme. Un'attivazione **solo per EPL**, se mai presa,
+richiederebbe la stessa cautela già usata per le decisioni di questo tipo:
+non abbastanza dati qui (una sola stagione) per escludere che sia rumore.
+
 ## Cosa manca (onestamente)
 
 - ✅ Il refit più frequente (7 giorni, default) su tutte le 10 stagioni è

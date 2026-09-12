@@ -165,8 +165,17 @@ class DixonColesModel:
         return float(lam), float(mu)
 
     def score_matrix(self, home_team: str, away_team: str, max_goals: int = 10) -> np.ndarray:
-        p = self._require_params()
         lam, mu = self.expected_goals(home_team, away_team)
+        return self.score_matrix_from_expected_goals(lam, mu, max_goals=max_goals)
+
+    def score_matrix_from_expected_goals(self, lam: float, mu: float, max_goals: int = 10) -> np.ndarray:
+        """Same tau-adjusted score matrix as `score_matrix`, but for caller-supplied
+        (lam, mu) instead of team names — this model's fitted `rho` is still used.
+        Lets a layer above this model (e.g. a tactical/xG adjustment — see
+        MODEL_SPEC.md) correct the expected-goals inputs without duplicating the
+        Dixon-Coles tau-correction math, and without this class needing to know
+        anything about where an adjusted lam/mu came from."""
+        p = self._require_params()
         home_probs = poisson.pmf(np.arange(max_goals + 1), lam)
         away_probs = poisson.pmf(np.arange(max_goals + 1), mu)
         matrix = np.outer(home_probs, away_probs)
