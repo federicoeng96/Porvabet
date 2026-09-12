@@ -203,3 +203,22 @@ completi — è un indice.
   storico per-squadra precomputato (la versione naive, O(n²) via query
   per-match, è stata uccisa dopo 7+ minuti senza output su 10 stagioni).
   151 test passano, lint pulito.
+- `730c3e5` — Credenziali Betfair reali configurate (Delayed App Key
+  generata manualmente dall'utente); **login verificato bloccato da questa
+  sandbox, non dalle credenziali o dal codice**: HTTP 403 Cloudflare
+  (geo/anti-frode) sia con credenziali placeholder sia reali, stesso
+  risultato in entrambi i casi — l'utente conferma che funziona da un IP
+  italiano/residenziale. Nessuna credenziale reale stampata/loggata/
+  committata in nessun momento. `BetfairExchangeOddsProvider` ora interroga
+  anche `OVER_UNDER_25` (non solo 1X2); corretto un bug reale nel sorgente
+  di `betfairlightweight` letto direttamente (`login()` è cert-based, va
+  usato `login_interactive()`); aggiunti locale italiano e rinnovo
+  automatico della sessione (`keep_alive`/re-login). Nuova
+  `ingest_live_odds_quotes` collega il provider al Decision Layer
+  (`run_analysis_for_match` la chiama per ogni partita non `FINISHED`,
+  mai un crash o una quota inventata se la fonte fallisce). I due blocchi
+  architetturali già segnalati (Candidate senza quota obbligatoria;
+  nessuna fixture futura reale in DB) restano aperti, non risolti da
+  questo collegamento — documentato onestamente, non forzato. Nuovo
+  `RUNNING_LOCALLY.md` per completare la verifica dal computer dell'utente.
+  161 test passano, lint pulito.
