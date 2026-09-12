@@ -18,10 +18,19 @@ def engine():
 @pytest.fixture()
 def db_session(engine):
     """Each test runs inside a transaction that is rolled back afterwards, so
-    tests never leak data into each other and never touch the dev database."""
+    tests never leak data into each other and never touch the dev database.
+
+    `join_transaction_mode="create_savepoint"` is required, not just tidy: any
+    code under test that calls `session.commit()` (e.g. the batch-analyze API
+    endpoint, which commits per match) would otherwise commit this fixture's
+    own outer `transaction` too — the standard SQLAlchemy footgun of binding a
+    Session directly to an already-open Connection/transaction. With this
+    mode, an inner `commit()` only releases a SAVEPOINT; the real rollback
+    below still discards everything at the end of the test.
+    """
     connection = engine.connect()
     transaction = connection.begin()
-    session_factory = sessionmaker(bind=connection, future=True)
+    session_factory = sessionmaker(bind=connection, future=True, join_transaction_mode="create_savepoint")
     session = session_factory()
     try:
         yield session

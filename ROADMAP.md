@@ -184,9 +184,18 @@ aggiungerebbe un `LiveOddsProvider` e un modello in-play dietro le stesse
 interfacce, senza refactoring del pre-match.
 
 ### 10. Frontend: rifiniture
-- Endpoint dedicato per "AGGIORNA ANALISI" su tutte le partite in una singola
-  chiamata batch invece di N chiamate parallele dal client (oggi funziona ma
-  genera N round-trip).
+- ✅ **Endpoint batch per "AGGIORNA ANALISI"**: `POST /matches/analyze-batch`
+  (`app/api/routers/matches.py`) esegue `run_analysis_for_match` per un
+  elenco di `match_id` (o su tutte le partite se omesso) in un'unica
+  richiesta, con commit/rollback per singola partita — un fallimento
+  (es. `InsufficientDataError`) non blocca le altre. Frontend aggiornato
+  (`analyzeMatchesBatch` in `lib/api.ts`, usato da `page.tsx`) a fare una
+  sola chiamata invece di N parallele. Testato end-to-end con dati reali
+  (curl contro il DB dev, 3 partite reali) oltre che con test API sintetici
+  (`tests/test_matches_api.py`, incluso il caso limite id sconosciuto).
+  Verifica di rendering nel browser non eseguita (nessun Playwright/browser
+  driver installato in questo repo) — verificato invece `tsc --noEmit` pulito
+  e il contratto JSON confermato identico lato backend/frontend.
 - Persistenza lato server della schedina (oggi è stato automaticamente
   derivato dallo stato client, mai salvato — coerente col fatto che il brief
   non richiede una cronologia scommesse, ma se servisse andrebbe aggiunta una

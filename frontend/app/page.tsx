@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import AlertPopover from "./components/AlertPopover";
 import BetSlip, { type BetSlipItem } from "./components/BetSlip";
 import RiskPill from "./components/RiskPill";
-import { analyzeMatch, getMatchDetail, listMatchesAtRiskLevel } from "./lib/api";
+import { analyzeMatchesBatch, getMatchDetail, listMatchesAtRiskLevel } from "./lib/api";
 import type { MatchDetailOut } from "./lib/types";
 
 export default function HomePage() {
@@ -55,7 +55,8 @@ export default function HomePage() {
   async function handleRefreshAll() {
     setRefreshing(true);
     try {
-      await Promise.all(matches.map((m) => analyzeMatch(m.id).catch(() => null)));
+      // One batch request instead of N parallel /analyze calls (ROADMAP.md item 10).
+      await analyzeMatchesBatch(matches.map((m) => m.id));
       await loadAll();
     } finally {
       setRefreshing(false);

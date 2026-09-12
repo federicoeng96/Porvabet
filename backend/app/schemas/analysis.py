@@ -77,3 +77,25 @@ class RefreshResultOut(BaseModel):
     match_id: int
     analysis_version_id: int
     risk_levels_computed: int
+
+
+class BatchAnalyzeRequest(BaseModel):
+    # None = every match in the DB; otherwise exactly the given ids (e.g. the
+    # set currently displayed in the frontend table) — see matches.py.
+    match_ids: list[int] | None = None
+
+
+class BatchRefreshItemOut(BaseModel):
+    match_id: int
+    status: str  # "ok" | "insufficient_data" | "error"
+    analysis_version_id: int | None = None
+    risk_levels_computed: int | None = None
+    error: str | None = None
+
+
+class BatchRefreshResultOut(BaseModel):
+    total: int
+    succeeded: int
+    insufficient_data: int
+    failed: int
+    results: list[BatchRefreshItemOut]

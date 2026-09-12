@@ -1,4 +1,4 @@
-import type { MatchDetailOut, MatchTableRowOut, RefreshResultOut } from "./types";
+import type { BatchRefreshResultOut, MatchDetailOut, MatchTableRowOut, RefreshResultOut } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -21,4 +21,12 @@ export function getMatchDetail(matchId: number): Promise<MatchDetailOut> {
 
 export function analyzeMatch(matchId: number): Promise<RefreshResultOut> {
   return getJson(`/matches/${matchId}/analyze`, { method: "POST" });
+}
+
+export function analyzeMatchesBatch(matchIds: number[]): Promise<BatchRefreshResultOut> {
+  return getJson(`/matches/analyze-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ match_ids: matchIds }),
+  });
 }

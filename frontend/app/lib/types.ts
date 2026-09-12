@@ -68,3 +68,19 @@ export interface RefreshResultOut {
   analysis_version_id: number;
   risk_levels_computed: number;
 }
+
+export interface BatchRefreshItemOut {
+  match_id: number;
+  status: "ok" | "insufficient_data" | "error";
+  analysis_version_id: number | null;
+  risk_levels_computed: number | null;
+  error: string | null;
+}
+
+export interface BatchRefreshResultOut {
+  total: number;
+  succeeded: number;
+  insufficient_data: number;
+  failed: number;
+  results: BatchRefreshItemOut[];
+}

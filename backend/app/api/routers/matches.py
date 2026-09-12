@@ -10,6 +10,9 @@ from app.models.match import Match
 from app.models.prediction import Alert, AnalysisVersion, Prediction, RiskSelection
 from app.schemas.analysis import (
     AlertOut,
+    BatchAnalyzeRequest,
+    BatchRefreshItemOut,
+    BatchRefreshResultOut,
     CountEstimateOut,
     MatchDetailOut,
     MatchSummaryOut,
@@ -213,4 +216,53 @@ def analyze_match(match_id: int, db: Session = Depends(get_db)):
         match_id=match_id,
         analysis_version_id=result.analysis_version_id,
         risk_levels_computed=len(result.risk_levels),
+    )
+
+
+@router.post("/analyze-batch", response_model=BatchRefreshResultOut)
+def analyze_matches_batch(payload: BatchAnalyzeRequest, db: Session = Depends(get_db)):
+    """Runs `run_analysis_for_match` for every match in `payload.match_ids`
+    (or every match in the DB if omitted) in one request, instead of the
+    frontend firing N parallel `/analyze` calls (ROADMAP.md item 10). Each
+    match is committed independently: one match's `InsufficientDataError` (an
+    expected, per-match condition — e.g. not enough prior history yet) or
+    unexpected failure must not roll back or block every other match in the
+    same batch, so failures are collected per item rather than raised.
+    """
+    if payload.match_ids is not None:
+        match_ids = payload.match_ids
+    else:
+        match_ids = list(db.scalars(select(Match.id)).all())
+
+    results: list[BatchRefreshItemOut] = []
+    succeeded = insufficient_data = failed = 0
+
+    for match_id in match_ids:
+        try:
+            result = run_analysis_for_match(db, match_id)
+            db.commit()
+            succeeded += 1
+            results.append(
+                BatchRefreshItemOut(
+                    match_id=match_id,
+                    status="ok",
+                    analysis_version_id=result.analysis_version_id,
+                    risk_levels_computed=len(result.risk_levels),
+                )
+            )
+        except InsufficientDataError as exc:
+            db.rollback()
+            insufficient_data += 1
+            results.append(BatchRefreshItemOut(match_id=match_id, status="insufficient_data", error=str(exc)))
+        except Exception as exc:  # noqa: BLE001 -- one match's failure must not abort the whole batch
+            db.rollback()
+            failed += 1
+            results.append(BatchRefreshItemOut(match_id=match_id, status="error", error=str(exc)))
+
+    return BatchRefreshResultOut(
+        total=len(match_ids),
+        succeeded=succeeded,
+        insufficient_data=insufficient_data,
+        failed=failed,
+        results=results,
     )
