@@ -67,3 +67,13 @@ completi — è un indice.
   nota di rischio di WhoScored/SofaScore con la distinzione esplicita
   "uso personale abbassa il rischio pratico, non elimina il rischio
   contrattuale residuo" — nessuna fonte declassata da B ad A.
+- `375c8aa` — Aggiornato CHANGELOG.
+- `ea4cffb` — understat.com **riparato per davvero** (nuovo endpoint reale
+  `getLeagueData`, verificato con richieste live) e **riclassificato da A a
+  B** (robots.txt disallow-all, mai controllato prima). fbref non toccato
+  (decisione utente). ClubElo verificato: non è xG, non raggiungibile in
+  questa sessione. Nessuna altra fonte xG gratuita reale trovata. Risolti
+  mismatch nomi squadra reali (Man City/Manchester City ecc.) con una mappa
+  di alias esplicita. Prima estrazione reale: 10.640 righe `TacticalFeature`
+  (xG/PPDA/deep completions, EPL+Serie A 2023/24) — non ancora usate da
+  nessun modello statistico.
