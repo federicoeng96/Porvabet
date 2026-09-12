@@ -41,13 +41,15 @@ def canonicalize_team_name(name: str) -> str:
 
 
 # Hand-verified against real data (this session, 2023/24 EPL+Serie A team
-# lists from both sources) — understat.com's full/official club name mapped
-# to the spelling football-data.co.uk uses (already ingested into `Team`).
-# Deliberately explicit and small rather than fuzzy-matched: these are
-# objective facts (the same club), not estimates, and the finite number of
-# top-flight clubs makes a hand-curated map both accurate and easy to extend
-# when a newly promoted/relegated club introduces another mismatch (fails
-# loud via `resolve_understat_team_name` below, rather than guessing).
+# lists from both sources, extended when the 2015/16-2024/25 backfill hit
+# promoted/relegated clubs not in the original 2023/24-only check) —
+# understat.com's full/official club name mapped to the spelling
+# football-data.co.uk uses (already ingested into `Team`). Deliberately
+# explicit and small rather than fuzzy-matched: these are objective facts
+# (the same club), not estimates, and the finite number of top-flight clubs
+# makes a hand-curated map both accurate and easy to extend when a newly
+# promoted/relegated club introduces another mismatch (fails loud via
+# `resolve_understat_team_name` below, rather than guessing).
 UNDERSTAT_TEAM_NAME_ALIASES: dict[str, str] = {
     "Manchester City": "Man City",
     "Manchester United": "Man United",
@@ -55,6 +57,8 @@ UNDERSTAT_TEAM_NAME_ALIASES: dict[str, str] = {
     "Nottingham Forest": "Nott'm Forest",
     "Wolverhampton Wanderers": "Wolves",
     "AC Milan": "Milan",
+    "West Bromwich Albion": "West Brom",
+    "SPAL 2013": "Spal",
 }
 
 
