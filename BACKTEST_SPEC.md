@@ -479,6 +479,30 @@ dei due campionati. A differenza dell'aggiustamento xG (positivo per l'EPL),
 qui il segnale negativo è netto su entrambi i campionati, non solo
 incoerente tra loro.
 
+**Aggiornamento (turno successivo, dopo il backfill a 10 stagioni) — correlazione
+riconfermata su un campione 10 volte più ampio, backtest NON ripetuto,
+motivato esplicitamente:**
+
+| Feature | r su 1.516 oss. (2023/24) | r su 15.122 oss. (10 stagioni, 2015/16–2024/25) |
+|---|---|---|
+| PPDA | −0.264 | **−0.310** |
+| Deep completions | +0.447 | **+0.424** |
+
+La correlazione non era un artefatto di campione piccolo — resta della
+stessa entità (anzi leggermente più forte per PPDA) con 10 volte più dati.
+Questo risolve la domanda posta esplicitamente in questo turno ("il problema
+era la scarsità di dati o la correlazione stessa che non regge?"): **né
+l'una né l'altra** — la correlazione grezza è reale e stabile, il problema è
+specificamente nel modo in cui era stata tradotta in una correzione
+applicata al modello (l'ipotesi già scritta sopra: probabile ridondanza con
+ciò che attacco/difesa Poisson già catturano). Un dataset più ampio non
+avrebbe cambiato l'esito di quel meccanismo — motivo per cui il backtest
+completo (walk-forward su 10 stagioni, stesso protocollo) **non è stato
+ripetuto**: sarebbe stato un test il cui risultato era già prevedibile dalla
+sola riconferma della correlazione, non una verifica onesta di
+un'ipotesi aperta. Nessuna modifica alla decisione: `compute_
+deep_completions_adjustment_factor` resta testato, non collegato.
+
 ## Cosa manca (onestamente)
 
 - ✅ Il refit più frequente (7 giorni, default) su tutte le 10 stagioni è
