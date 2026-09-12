@@ -20,7 +20,20 @@ from app.models.enums import DataSourceCategory, MarketCategory
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
-from app.providers.base.dto import HistoricalMatchRecord
+from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord
+
+# outcome_code -> (market category, market label, outcome label) for the live
+# markets an OddsProvider (e.g. BetfairExchangeOddsProvider) can return today —
+# see `ingest_live_odds_quotes` below. CORNERS/CARDS are deliberately absent:
+# no live odds source in this project covers them yet (see DATA_SOURCES.md),
+# so a record with an unrecognized outcome_code is skipped, never guessed at.
+LIVE_ODDS_OUTCOME_META: dict[str, tuple[MarketCategory, str, str]] = {
+    "HOME": (MarketCategory.MATCH_RESULT, "1X2", "Home win"),
+    "DRAW": (MarketCategory.MATCH_RESULT, "1X2", "Draw"),
+    "AWAY": (MarketCategory.MATCH_RESULT, "1X2", "Away win"),
+    "OVER": (MarketCategory.TOTAL_GOALS, "Over/Under 2.5 goals", "Over 2.5"),
+    "UNDER": (MarketCategory.TOTAL_GOALS, "Over/Under 2.5 goals", "Under 2.5"),
+}
 
 COMPETITION_META = {
     "EPL": {"name": "Premier League", "country": "England"},
@@ -258,3 +271,47 @@ def _upsert_closing_odds(
             is_closing=True,
         )
     )
+
+
+def ingest_live_odds_quotes(
+    db: Session, match: Match, records: list[OddsQuoteRecord], source: Source | None = None
+) -> int:
+    """Persists `OddsQuoteRecord`s from a live `OddsProvider` (e.g.
+    `BetfairExchangeOddsProvider`) as new `OddsQuote` rows, creating the
+    `Market`/`MarketOutcome` rows on demand — needed for a genuinely future
+    fixture that has no historical closing-odds rows yet.
+
+    Unlike `_upsert_closing_odds` (one closing price per bookmaker, updated in
+    place), this always inserts a fresh row: a live quote is a point-in-time
+    observation, and `_build_candidates_and_predictions` already picks the
+    most recent `OddsQuote` per outcome, so preserving history here costs
+    nothing and keeps a full price trail. A record whose `outcome_code` isn't
+    in `LIVE_ODDS_OUTCOME_META` (e.g. a market this ingestion layer doesn't
+    yet know how to place, such as corners/cards if a provider ever returns
+    them) is skipped, never guessed at — see the module-level constant.
+
+    Returns the number of `OddsQuote` rows written (0 when the provider had
+    nothing available — never fabricated, per the project's standing rule).
+    """
+    written = 0
+    for record in records:
+        meta = LIVE_ODDS_OUTCOME_META.get(record.outcome_code)
+        if meta is None:
+            continue
+        category, market_label, outcome_label = meta
+        market = _get_or_create_market(db, match, category, market_label)
+        if category == MarketCategory.TOTAL_GOALS:
+            market.line = 2.5
+        outcome = _get_or_create_outcome(db, market, record.outcome_code, outcome_label)
+        db.add(
+            OddsQuote(
+                market_outcome_id=outcome.id,
+                bookmaker=record.bookmaker,
+                decimal_odds=record.decimal_odds,
+                captured_at=record.captured_at,
+                is_closing=record.is_closing,
+                source_id=source.id if source else None,
+            )
+        )
+        written += 1
+    return written

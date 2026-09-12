@@ -15,6 +15,7 @@ from historical closing odds (the only real odds source in this slice — see
 DATA_SOURCES.md on ePlay24) or a future live feed.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -30,10 +31,15 @@ from app.engine.decision.risk_score import RiskFactors
 from app.engine.decision.selection import Candidate, build_risk_ladder
 from app.engine.decision.value import classify_alert, discrepancy_pct, expected_value
 from app.engine.statistical.dixon_coles import DixonColesModel, GoalMatchInput
+from app.ingestion.match_ingestion import ingest_live_odds_quotes
 from app.models.enums import AlertLevel, MarketCategory, MatchStatus, ModelFamily
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.prediction import Alert, AnalysisVersion, ModelVersion, Prediction, RiskSelection
+from app.providers.base import build_default_odds_provider_chain
+from app.providers.base.odds_provider import OddsProvider
+
+logger = logging.getLogger(__name__)
 
 MARKET_LABELS = {
     "MATCH_RESULT": "1X2",
@@ -56,10 +62,24 @@ class AnalysisResult:
     count_market_estimates_computed: int  # CORNERS/CARDS: probability-only, no odds — see count_market_estimates.py
 
 
-def run_analysis_for_match(db: Session, match_id: int, trigger: str = "manual_refresh") -> AnalysisResult:
+def run_analysis_for_match(
+    db: Session,
+    match_id: int,
+    trigger: str = "manual_refresh",
+    odds_provider: OddsProvider | None = None,
+) -> AnalysisResult:
     match = db.get(Match, match_id)
     if match is None:
         raise ValueError(f"Match {match_id} not found")
+
+    # Only for a not-yet-played fixture: a FINISHED match already has real
+    # historical closing odds (see ingest_historical_match) and no live
+    # market exists for it anymore, so skip this for every backtest/history
+    # match — which is also what keeps this a no-op (no network call at all)
+    # for the large majority of calls in this codebase's test suite.
+    if match.status != MatchStatus.FINISHED:
+        provider = odds_provider if odds_provider is not None else build_default_odds_provider_chain()
+        _refresh_live_odds_for_match(db, match, provider)
 
     training_matches = _load_training_matches(db, match)
     if len(training_matches) < MIN_TRAINING_MATCHES:
@@ -154,6 +174,37 @@ def run_analysis_for_match(db: Session, match_id: int, trigger: str = "manual_re
         risk_levels=risk_levels_out,
         count_market_estimates_computed=len(count_estimates),
     )
+
+
+def _refresh_live_odds_for_match(db: Session, match: Match, odds_provider: OddsProvider) -> int:
+    """Fetches current odds for `match` from `odds_provider` (e.g. the
+    Betfair-Exchange-first chain from `build_default_odds_provider_chain`)
+    and persists them as new OddsQuote rows via `ingest_live_odds_quotes`.
+
+    Never raises and never fabricates: if the provider is unavailable (no
+    credentials configured) or the fetch itself fails (network down,
+    unexpected response), this logs and returns 0 — the rest of the analysis
+    then proceeds exactly as before this feature existed, using whatever
+    OddsQuote rows already exist (possibly none, in which case
+    `_build_candidates_and_predictions` correctly produces no Candidate for
+    that market — never an invented price).
+    """
+    if not odds_provider.is_available():
+        return 0
+    try:
+        records = odds_provider.get_odds_for_match(
+            match.home_team.name, match.away_team.name, match.kickoff_utc.isoformat()
+        )
+    except Exception:
+        logger.exception(
+            "Live odds refresh failed for match %s (%s vs %s) — continuing with "
+            "whatever OddsQuote rows already exist.",
+            match.id,
+            match.home_team.name,
+            match.away_team.name,
+        )
+        return 0
+    return ingest_live_odds_quotes(db, match, records)
 
 
 def _get_or_create_count_model_version(

@@ -42,26 +42,31 @@ si inserisca senza modificare i chiamanti.
 `D_OFFICIAL_API_PERSONAL_ACCOUNT`): non è una fonte scraped, è l'API
 ufficiale Betting di Betfair usata tramite l'account personale dell'utente —
 nessun rischio ToS da valutare. `BetfairExchangeOddsProvider`
-(`app/providers/betfair/provider.py`) è implementato e testato (contro un
+(`app/providers/betfair/provider.py`) è implementato, testato (contro un
 client finto costruito con le classi di risorse reali di
-`betfairlightweight`), ma **non ancora verificato contro l'API live**:
-nessuna credenziale Betfair era disponibile in questa sessione. Priorità
-raccomandata nella catena di fallback: **Betfair per primo** (unica fonte
-qui che è realmente un'API funzionante, quando l'utente configura le
-credenziali), poi Betson/diretta.it, poi livescore.com come li documenta
-`odds_provider_chain.py` — nessun punto del codice compone ancora questa
-catena di default per l'engine live (v. sotto), quindi oggi è comunque solo
-una possibilità pronta, non qualcosa già in esecuzione.
+`betfairlightweight`) e **ora collegato al Decision Layer**:
+`run_analysis_for_match` (`analysis_runner.py`) interroga
+`build_default_odds_provider_chain()` — Betfair per primo, come qui
+raccomandato — per ogni partita non ancora `FINISHED`, e persiste quanto
+trovato come `OddsQuote` (`ingest_live_odds_quotes` in
+`match_ingestion.py`), creando `Market`/`MarketOutcome` al volo se
+mancano. Le credenziali reali dell'utente sono configurate, ma **la
+verifica contro l'API live resta da fare fuori da questa sandbox**: il
+login stesso (non solo le chiamate autenticate) è bloccato da un WAF
+Cloudflare geografico/anti-frode sull'IP di questo ambiente, stesso
+risultato con credenziali finte e reali — confermato funzionante da un IP
+italiano dall'utente (v. DATA_SOURCES.md, RUNNING_LOCALLY.md). Questo è un
+limite di rete della sandbox, non del codice o delle credenziali.
 
 Conseguenza architetturale: finché `EPlay24OddsProvider`, `BetsonDirettaOddsProvider`
 e `LivescoreOddsProvider` restano interfacce senza implementazione funzionante,
-e `BetfairExchangeOddsProvider` resta implementato ma non verificato dal vivo
+e `BetfairExchangeOddsProvider` resta collegato ma non verificato dal vivo
 (v. `app/providers/eplay24/`, `app/providers/betson_diretta/`,
 `app/providers/livescore/`, `app/providers/betfair/`), questo progetto è, di
 fatto, **un motore di stima (probabilità + quota fair), non ancora un motore
 di value betting verificato contro un book reale in tempo reale** — Betfair
-è la prima fonte di questo progetto per cui manca "solo" la verifica con
-credenziali reali, non anche un blocco tecnico o ToS. Il "value" e
+è la prima fonte di questo progetto per cui manca "solo" la verifica dal
+vivo (rete, non credenziali), non anche un blocco tecnico o ToS. Il "value" e
 gli alert mostrati oggi nell'interfaccia sono sempre calcolati contro le
 quote della fonte realmente disponibile (football-data.co.uk — quote reali di
 altri bookmaker, mai simulate), e sono **etichettati esplicitamente con il nome

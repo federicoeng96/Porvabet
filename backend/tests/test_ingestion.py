@@ -8,14 +8,18 @@ from sqlalchemy import select
 
 from app.ingestion.match_ingestion import (
     canonicalize_team_name,
+    get_or_create_competition,
+    get_or_create_season,
     get_or_create_team,
     ingest_historical_match,
+    ingest_live_odds_quotes,
     resolve_understat_team_name,
 )
+from app.models.enums import MatchStatus
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
-from app.providers.base.dto import HistoricalMatchRecord
+from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord
 
 
 def _sample_record(external_ref="synthetic:test:1") -> HistoricalMatchRecord:
@@ -166,3 +170,104 @@ def test_ingest_is_idempotent(db_session):
         select(TeamMatchStats).where(TeamMatchStats.match_id == match1.id)
     ).all()
     assert len(stats) == 2
+
+
+def _scheduled_match_with_no_markets(db_session, external_ref: str) -> Match:
+    """A genuinely future fixture as it exists before any odds have ever been
+    ingested for it — no Market/MarketOutcome/OddsQuote rows at all, unlike
+    every match `ingest_historical_match` touches (which always comes bundled
+    with closing odds). This is exactly the case `ingest_live_odds_quotes`
+    must handle: get-or-create everything from scratch."""
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2026/2027")
+    home = get_or_create_team(db_session, "Synthetic Rovers")
+    away = get_or_create_team(db_session, "Synthetic Wanderers")
+    match = Match(
+        season_id=season.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_utc=datetime(2026, 9, 20, 15, 0, tzinfo=UTC),
+        status=MatchStatus.SCHEDULED,
+        external_ref=external_ref,
+    )
+    db_session.add(match)
+    db_session.flush()
+    return match
+
+
+def test_ingest_live_odds_quotes_creates_markets_for_future_fixture(db_session):
+    match = _scheduled_match_with_no_markets(db_session, "synthetic:live:1")
+    now = datetime(2026, 9, 19, 12, 0, tzinfo=UTC)
+    records = [
+        OddsQuoteRecord("Betfair", "1X2", "HOME", 2.10, now, is_closing=False),
+        OddsQuoteRecord("Betfair", "1X2", "DRAW", 3.40, now, is_closing=False),
+        OddsQuoteRecord("Betfair", "1X2", "AWAY", 3.80, now, is_closing=False),
+        OddsQuoteRecord("Betfair", "Over/Under 2.5", "OVER", 1.90, now, is_closing=False),
+        OddsQuoteRecord("Betfair", "Over/Under 2.5", "UNDER", 1.95, now, is_closing=False),
+    ]
+
+    written = ingest_live_odds_quotes(db_session, match, records)
+    db_session.flush()
+
+    assert written == 5
+    markets = db_session.scalars(select(Market).where(Market.match_id == match.id)).all()
+    categories = {m.category.value if hasattr(m.category, "value") else m.category for m in markets}
+    assert categories == {"MATCH_RESULT", "TOTAL_GOALS"}
+
+    total_goals_market = next(m for m in markets if m.category.value == "TOTAL_GOALS")
+    assert total_goals_market.line == 2.5
+
+    result_market = next(m for m in markets if m.category.value == "MATCH_RESULT")
+    home_outcome = db_session.scalar(
+        select(MarketOutcome).where(
+            MarketOutcome.market_id == result_market.id, MarketOutcome.code == "HOME"
+        )
+    )
+    odds = db_session.scalars(
+        select(OddsQuote).where(OddsQuote.market_outcome_id == home_outcome.id)
+    ).all()
+    assert len(odds) == 1
+    assert odds[0].decimal_odds == 2.10
+    assert odds[0].bookmaker == "Betfair"
+    assert odds[0].is_closing is False
+
+
+def test_ingest_live_odds_quotes_appends_history_rather_than_overwriting(db_session):
+    match = _scheduled_match_with_no_markets(db_session, "synthetic:live:2")
+    t1 = datetime(2026, 9, 19, 10, 0, tzinfo=UTC)
+    t2 = datetime(2026, 9, 19, 11, 0, tzinfo=UTC)
+
+    ingest_live_odds_quotes(
+        db_session, match, [OddsQuoteRecord("Betfair", "1X2", "HOME", 2.10, t1, is_closing=False)]
+    )
+    db_session.flush()
+    ingest_live_odds_quotes(
+        db_session, match, [OddsQuoteRecord("Betfair", "1X2", "HOME", 2.05, t2, is_closing=False)]
+    )
+    db_session.flush()
+
+    home_outcome = db_session.scalar(
+        select(MarketOutcome).where(MarketOutcome.code == "HOME")
+    )
+    odds = db_session.scalars(
+        select(OddsQuote)
+        .where(OddsQuote.market_outcome_id == home_outcome.id)
+        .order_by(OddsQuote.captured_at)
+    ).all()
+    assert [o.decimal_odds for o in odds] == [2.10, 2.05]
+
+
+def test_ingest_live_odds_quotes_skips_unrecognized_outcome_codes(db_session):
+    """Never guesses a Market/MarketOutcome for a market this ingestion layer
+    doesn't have a placement rule for (e.g. corners/cards) — see
+    LIVE_ODDS_OUTCOME_META's docstring."""
+    match = _scheduled_match_with_no_markets(db_session, "synthetic:live:3")
+    now = datetime(2026, 9, 19, 12, 0, tzinfo=UTC)
+    records = [OddsQuoteRecord("Betfair", "Corners O/U", "OVER_9_5", 1.90, now, is_closing=False)]
+
+    written = ingest_live_odds_quotes(db_session, match, records)
+    db_session.flush()
+
+    assert written == 0
+    markets = db_session.scalars(select(Market).where(Market.match_id == match.id)).all()
+    assert markets == []

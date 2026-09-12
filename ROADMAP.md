@@ -332,33 +332,47 @@ interfacce, senza refactoring del pre-match.
   che il limite del browser headless sia risolto — v. ARCHITECTURE.md), va
   ripreso da qui: a quel punto costruire il frontend per la colonna ALERT
   avrebbe un motivo concreto, cosa che oggi ancora non ha.
-- ⚠️ **Aggiornamento dopo Betfair Exchange — il quadro cambia, ma non è
-  ancora "sbloccato".** `BetfairExchangeOddsProvider` (v. DATA_SOURCES.md,
-  ARCHITECTURE.md) è una fonte quote **ufficiale**, non scraped: nessun
-  blocco tecnico d'ambiente né rischio ToS come Betson/livescore. Questa è
-  la prima fonte quote di questo progetto per cui manca "solo" la verifica
-  con credenziali reali dell'utente (mai testata dal vivo in questa sessione
-  — nessun account Betfair disponibile), non anche un ostacolo strutturale.
-  **Non ancora sufficiente per dichiarare la colonna ALERT sbloccata**: finché
-  non viene verificata con dati reali (e finché nessun punto del codice
-  compone `FallbackOddsProvider`/`BetfairExchangeOddsProvider` dentro
-  `run_analysis_for_match`, cosa non fatta in questo turno perché non
-  richiesta esplicitamente), il Value/Odds Engine continua a usare solo
-  football-data.co.uk per le quote reali. Prossimo passo concreto, quando
-  l'utente fornirà le credenziali Betfair: verificare `get_odds_for_match`
-  contro l'API live per una partita reale, poi valutare se collegare la
-  fonte all'engine e costruire la colonna ALERT nel frontend — a quel punto
-  avrebbe finalmente un motivo concreto e verificato, non solo teorico.
-- ⚠️ **Stato: BLOCCATO IN ATTESA, non forzato.** L'utente si sta registrando
-  su Betfair (KYC in corso, qualche giorno). In questo turno l'interfaccia
-  è stata rifinita (config `.env.example` aggiornato con
-  `BETFAIR_APP_KEY`/`BETFAIR_USERNAME`/`BETFAIR_PASSWORD`, test aggiuntivi
-  per il messaggio d'errore — deve restare leggibile e risolvibile da solo,
-  non criptico — e per la lettura reale delle variabili d'ambiente tramite
-  `app.config.Settings`, non solo degli argomenti costruttore) ma **nessun
-  tentativo contro l'API live**: non ci sono credenziali da usare finché
-  l'utente non completa la registrazione. Prossimo passo non ancora
-  eseguibile, in attesa.
+- ✅ **Betfair collegato al Decision Layer — credenziali configurate, ma
+  ancora non verificato dal vivo (blocco di rete della sandbox, non un
+  problema di codice o di credenziali).** `run_analysis_for_match`
+  (`analysis_runner.py`) ora chiama `build_default_odds_provider_chain()`
+  (Betfair per primo) per ogni partita non `FINISHED` prima di costruire i
+  `Candidate`, e persiste quanto trovato come nuove righe `OddsQuote` tramite
+  `ingest_live_odds_quotes` (`match_ingestion.py`) — creando `Market`/
+  `MarketOutcome` al volo se non esistono ancora (necessario per una
+  partita futura senza quote storiche). `BetfairExchangeOddsProvider` ora
+  interroga sia `MATCH_ODDS` (1X2) sia `OVER_UNDER_25` (O/U 2.5 gol, non
+  solo 1X2 come prima); corner/cartellini restano non implementati (nessun
+  market type Betfair verificato per questi mercati). Aggiunti anche: fix
+  di un bug reale trovato leggendo il sorgente di `betfairlightweight`
+  (`client.login()` è l'endpoint cert-based, non quello interattivo — va
+  usato `client.login_interactive()`), locale `"italy"` per l'endpoint
+  identity, e rinnovo automatico della sessione (`session_expired` +
+  `keep_alive()`, fallback a re-login completo) così l'utente non deve mai
+  reinserire nulla manualmente. **Le credenziali reali sono ora configurate**
+  (`BETFAIR_USERNAME`/`BETFAIR_PASSWORD`/`BETFAIR_APP_KEY`, quest'ultima una
+  Delayed key generata manualmente dall'utente da un IP italiano), ma il
+  login da questa sandbox resta bloccato con lo stesso `HTTP 403` Cloudflare
+  già trovato con credenziali placeholder — confermato dall'utente che
+  funziona da un IP italiano/residenziale. **Verifica end-to-end reale
+  (copertura mercati 1X2/O-U/corner/cartellini su partite vere, quote
+  effettivamente ricevute) resta da fare dal computer dell'utente — v.
+  `RUNNING_LOCALLY.md`.**
+- ⚠️ **I due blocchi architetturali sotto (Candidate senza quota
+  obbligatoria; nessuna partita futura reale in DB) restano APERTI, non
+  risolti da questo collegamento.** Il collegamento sopra risolve solo la
+  disponibilità della *fonte* quote (Betfair può ora alimentare
+  `OddsQuote` anche per una partita futura, se ha un mercato liquido) — non
+  cambia cosa succede quando NON c'è una quota liquida: il mercato resta
+  silenziosamente assente dalla tabella (`if odds_quote is None: continue`
+  in `_build_candidates_and_predictions`, invariato), non un "n/d" esplicito
+  in UI. Farlo richiederebbe la stessa decisione di design già segnalata
+  sotto ((a) rendere `bookmaker_odds`/value/alert opzionali dentro
+  `Candidate`/`RiskFactors`, oppure (b) un tipo di riga separato) — non presa
+  in questo turno per lo stesso motivo di prima: altererebbe un concetto
+  centrale già testato senza un via libera esplicito su quale delle due
+  strade prendere. Il secondo blocco (nessuna fixture futura ingerita in
+  nessuna fonte) è del tutto indipendente da Betfair e resta invariato.
 - ⚠️ **Scaffolding frontend (colonne Probabilità/Quota Modello senza quota
   reale) — fermato prima di implementare, ambiguità architetturale reale
   trovata investigando, non solo un'attività rimandata.** L'idea proposta

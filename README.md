@@ -8,6 +8,9 @@ Serie A). Vedi la documentazione di progetto prima di tutto:
 - [`MODEL_SPEC.md`](./MODEL_SPEC.md) — modelli statistici, fair odds, value, risk score
 - [`BACKTEST_SPEC.md`](./BACKTEST_SPEC.md) — metriche, garanzie anti-leakage, cosa manca
 - [`ROADMAP.md`](./ROADMAP.md) — stato reale e prossimi passi
+- [`RUNNING_LOCALLY.md`](./RUNNING_LOCALLY.md) — come eseguire il progetto sul
+  tuo computer per una verifica end-to-end reale (necessario per Betfair
+  Exchange: la sandbox di sviluppo è bloccata a livello di rete, v. `DATA_SOURCES.md`)
 
 ## Uso previsto
 

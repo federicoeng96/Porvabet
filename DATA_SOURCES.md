@@ -643,36 +643,71 @@ un'**API ufficiale e documentata** (`developer.betfair.com`), autenticata con
 l'account Betfair personale dell'utente — nessuno scraping, nessuna
 interpretazione ToS da fare.
 
-**1. Autenticazione — verificata via ricerca diretta della documentazione
-ufficiale (developer.betfair.com / betfair-developer-docs.atlassian.net),
-non assunta:**
-- **Interactive Login** (`POST https://identitysso.betfair.com/api/login`,
+**1. Autenticazione — verificata via lettura diretta del sorgente installato
+di `betfairlightweight`, non assunta, con una correzione rispetto a una
+versione precedente di questa sezione:**
+- **Interactive Login** (`POST https://identitysso.betfair.<tld>/api/login`,
   header `X-Application: <AppKey>`, form-encoded `username`/`password`) —
   **nessun certificato SSL richiesto**. Scelta di questo progetto.
-- **Non-Interactive/"bot" Login** (`identitysso-cert.betfair.com`) — richiede
-  generare e caricare sul proprio account un certificato SSL auto-firmato;
-  è il metodo che Betfair raccomanda per bot/uso non presidiato, ma aggiunge
-  complessità di gestione certificati non giustificata per un uso
-  intermittente di analisi pre-match personale (non trading ad alta
-  frequenza) — scelta ingegneristica esplicita, non una svista.
-- **Application Key**: `createDeveloperAppKeys` (Accounts API) crea sia una
+  **Correzione verificata questa sessione**: `betfairlightweight.APIClient`
+  NON sceglie automaticamente Interactive Login quando non viene passato un
+  certificato, come una versione precedente di questa nota affermava per
+  assunzione — `client.login()` è sempre l'endpoint cert-based
+  (`identitysso-cert...`), mentre l'Interactive Login è un endpoint
+  distinto, `client.login_interactive()`, che va chiamato esplicitamente
+  (confermato leggendo `apiclient.py`/`endpoints/login.py`/
+  `endpoints/logininteractive.py` della libreria installata). Il provider
+  ora chiama `login_interactive()` esplicitamente.
+- **Locale italiano**: `APIClient(..., locale="italy")` instrada le chiamate
+  identity/keep-alive su `identitysso.betfair.it` invece del default `.com`
+  (confermato da `BaseClient.IDENTITY_URLS`, un dizionario fisso di locale
+  supportati dalla libreria) — la Betting API (`api.betfair.com`) non ha
+  invece varianti per paese.
+- **Durata sessionToken e rinnovo automatico — verificato dal sorgente
+  della libreria, non assunto**: `BaseClient.SESSION_TIMEOUT` fissa 20 minuti
+  (1200s) per il locale italiano; la property `client.session_expired`
+  ritorna `True` una volta passata più di metà di quel tempo (10 minuti)
+  dall'ultimo login/keep-alive — cadenza di rinnovo raccomandata dalla
+  libreria stessa, non un numero scelto da questo progetto. Il provider
+  controlla questa property a ogni chiamata e rinnova con `client.keep_alive()`
+  (stessa sessione, nessuna credenziale da reinserire); solo se anche questo
+  fallisce (token troppo vecchio per essere rinnovato) fa un
+  `login_interactive()` completo. Effetto: **l'utente non deve mai
+  reinserire nulla manualmente**, per tutta la durata del processo.
+- **Non-Interactive/"bot" Login** (`identitysso-cert.betfair.<tld>`) —
+  richiede generare e caricare sul proprio account un certificato SSL
+  auto-firmato; è il metodo che Betfair raccomanda per bot/uso non
+  presidiato, ma aggiunge complessità di gestione certificati non
+  giustificata per un uso intermittente di analisi pre-match personale (non
+  trading ad alta frequenza) — scelta ingegneristica esplicita, non una
+  svista.
+- **Application Key**: `createDeveloperAppKeys`/`getDeveloperAppKeys`
+  (Accounts API, `AccountAPING/v1.0/...`, JSON-RPC su
+  `api.betfair.com/exchange/account/json-rpc/v1`) creano/leggono sia una
   chiave **Delayed** (gratuita, attiva subito, dati con ritardo 1-180s) sia
   una **Live** (inattiva, richiede verifica KYC completa + una tantum di
   circa £499 di attivazione). Questo progetto **usa solo la Delayed key** —
-  la Live non serve e non viene mai richiesta. **Ottenere la Delayed key è un
-  passo manuale una tantum che l'utente deve fare da sé** (login sul sito
-  Betfair, poi `createDeveloperAppKeys` o l'"Accounts API Demo Tool" su
-  apps.betfair.com) — nessun codice di questo progetto può o deve
-  automatizzarlo.
+  la Live non serve e non viene mai richiesta. **Nell'uso reale, l'utente ha
+  generato la Delayed App Key manualmente** (tool "Accounts API Demo Tool" /
+  `createDeveloperAppKeys`, da un IP italiano) — nessun codice di questo
+  progetto ha automatizzato quel passo in questa sessione (vedi più sotto sul
+  perché: blocco di rete dell'ambiente sandbox, non una scelta di design).
 
 **2. Endpoint usati — Sports API-NG (Betting API), operazioni verificate
 tramite la documentazione ufficiale**: `listEventTypes` (trova l'id di
 "Soccer"), `listMarketCatalogue` (filtrato per `eventTypeIds`,
-`marketTypeCodes: ["MATCH_ODDS"]`, `textQuery` con i nomi delle due squadre,
+`marketTypeCodes`, `textQuery` con i nomi delle due squadre,
 `marketStartTime` centrato sul kickoff — con proiezione
 `RUNNER_DESCRIPTION`/`EVENT` per avere nomi giocatori/squadre), `listMarketBook`
 (quote back/lay correnti per i mercati trovati, con `priceProjection:
-EX_BEST_OFFERS`).
+EX_BEST_OFFERS`). **Due market type interrogati**, entrambi codici Betfair
+reali e documentati: `MATCH_ODDS` (1X2) e `OVER_UNDER_25` (Over/Under 2.5
+gol, runner standard `"Over 2.5 Goals"`/`"Under 2.5 Goals"`). Corner e
+cartellini **non sono implementati**: nessun codice market type Betfair
+verificato per questi mercati in questa sessione (a differenza di
+`MATCH_ODDS`/`OVER_UNDER_25`, ampiamente documentati) — indovinarne uno
+sarebbe esattamente la "fonte dati inventata" che questo progetto evita;
+serve verifica live prima di aggiungerli (v. `RUNNING_LOCALLY.md`).
 
 **3. Libreria Python**: usata `betfairlightweight` (reale, repo attivo su
 GitHub sotto l'organizzazione `betcode-org`, installata e verificata in
@@ -699,23 +734,44 @@ il prezzo di un banco. Ogni quota è etichettata
 "bookmaker", e il `market_label` di ogni quota include esplicitamente
 "Betfair" per la stessa ragione.
 
-**6. Copertura mercati — non verificata dal vivo in questa sessione (nessuna
-credenziale disponibile)**: fonti secondarie indicano che i mercati Match
-Odds per Premier League/Serie A vengono tipicamente creati con giorni di
-anticipo, con liquidità bassa nelle fasi iniziali — non è una garanzia
-ufficiale Betfair, e non è stata confermata con una richiesta live in questa
-sessione. Se un mercato non esiste ancora per una partita, il provider
-restituisce una lista vuota, mai un prezzo inventato.
+**6. Copertura mercati — NON verificata dal vivo (blocco di rete
+dell'ambiente sandbox, non un limite di Betfair o del codice)**: fonti
+secondarie indicano che i mercati Match Odds per Premier League/Serie A
+vengono tipicamente creati con giorni di anticipo, con liquidità bassa
+nelle fasi iniziali — non è una garanzia ufficiale Betfair. **Non è stato
+possibile confermarlo con una richiesta live in questa sessione**: vedi il
+blocco di rete descritto sotto. Copertura reale di 1X2/O-U 2.5 sulle
+partite principali, e presenza/liquidità di corner/cartellini, **restano da
+verificare dal computer dell'utente** (v. `RUNNING_LOCALLY.md`). Se un
+mercato non esiste o non ha un prezzo back disponibile, il provider
+restituisce nulla per quell'esito, mai un prezzo inventato.
 
-**7. Non testato contro l'API live in questa sessione (nessun account
-Betfair disponibile)** — la logica di costruzione richieste/parsing risposte
-è stata testata con un client finto costruito con le **classi di risorse
+**7. Non testato contro l'API live in questa sessione — causa verificata:
+blocco di rete dell'ambiente, non mancanza di credenziali.** Le credenziali
+Betfair (`BETFAIR_USERNAME`/`BETFAIR_PASSWORD`/`BETFAIR_APP_KEY`, quest'ultima
+una Delayed key v1.0-DELAY generata manualmente dall'utente) **sono
+configurate**. Il login diretto (`POST identitysso.betfair.it/api/login`) è
+stato testato dal vivo da questa sessione **due volte**: prima con
+credenziali placeholder finte, poi con le credenziali reali dell'utente —
+**stesso risultato in entrambi i casi**: `HTTP 403`, pagina HTML servita da
+Cloudflare, testo `"Restricted — Our Software detects that you may be
+accessing the Betfair website from a country that Betfair does not accept
+bets from or the traffic from your network was detected as being
+unusual."`. Questo è un blocco geografico/anti-frode di Betfair stesso
+(Cloudflare WAF) sull'IP di uscita di questo ambiente sandbox (verosimilmente
+un IP datacenter, non italiano/residenziale) — applicato **prima** di
+qualunque elaborazione delle credenziali, quindi indipendente da esse.
+**L'utente ha confermato che lo stesso login funziona correttamente da un
+IP italiano/residenziale** (è così che ha ottenuto la Delayed App Key). Non
+è stato tentato alcun aggiramento (VPN, spoofing, ecc.) — sarebbe elusione
+di una misura di sicurezza/compliance di un vero servizio scommesse, fuori
+perimetro per questo progetto. La logica di costruzione richieste/parsing
+risposte è testata con un client finto costruito con le **classi di risorse
 reali** di `betfairlightweight` (`EventTypeResult`, `MarketCatalogue`,
 `MarketBook`, ecc., con gli stessi nomi di campo camelCase delle risposte
-JSON reali di Betfair), non contro dati live. **Serve verifica con
-credenziali reali dell'utente prima di potersi fidare di questa fonte per
-un'analisi vera** — stesso standard di onestà già applicato a tutte le altre
-fonti mai testate dal vivo in questa sessione.
+JSON reali di Betfair), non contro dati live. **Un vero test end-to-end deve
+essere eseguito dal computer dell'utente** (v. `RUNNING_LOCALLY.md`) prima
+di potersi fidare di questa fonte per un'analisi vera.
 
 **Stato nel codice**: `BetfairExchangeOddsProvider`
 (`app/providers/betfair/provider.py`), categoria
@@ -724,7 +780,18 @@ credenziali (`betfair_app_key`/`betfair_username`/`betfair_password`) sono
 lette da variabili d'ambiente tramite `app.config.Settings` (stesso standard
 già in uso per `API_FOOTBALL_KEY`) — mai hardcoded, mai in chiaro nei log.
 `is_available()` ritorna `False` senza tutte e tre; l'assenza degrada
-correttamente, non fabbrica quote.
+correttamente, non fabbrica quote. Il provider è collegato al Decision
+Layer (`app/engine/decision/analysis_runner.py`,
+`app/ingestion/match_ingestion.ingest_live_odds_quotes`): per ogni partita
+non ancora `FINISHED`, `run_analysis_for_match` interroga la catena di
+provider quote (Betfair per primo — v. `build_default_odds_provider_chain`
+in `app/providers/base/odds_provider_chain.py`) e persiste quanto trovato
+come nuove righe `OddsQuote`. Se Betfair (o qualunque provider) non ha una
+quota liquida per un mercato, quel mercato semplicemente non produce un
+`Candidate`/`Prediction` con valore reale — comportamento già esistente e
+invariato (mai fabbricato), lo stesso già in uso per corner/cartellini
+tramite `additional_estimates` (probabilità del modello, senza quota/valore/alert
+= "n/d").
 
 ### FantaLab — moduli/titolari/tiratori/ballottaggi (Serie A) — **ACCANTONATO**
 
@@ -995,5 +1062,5 @@ Nessun provider Premier League aggiunto.
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
 | Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
 | livescore.com (quote, backup) | C | ❌ | Auditata da zero; quote dietro widget affiliato gated, mai osservate dal vivo |
-| Betfair Exchange (quote ufficiali) | D | ✅ | API ufficiale via account personale — implementata, non testata dal vivo (nessuna credenziale disponibile) |
+| Betfair Exchange (quote ufficiali) | D | ✅ | API ufficiale via account personale, credenziali configurate — collegata al Decision Layer; non testata dal vivo da questa sessione (blocco di rete Cloudflare sull'IP sandbox, confermato funzionante da IP italiano — v. RUNNING_LOCALLY.md) |
 | FantaLab (moduli/titolari/ballottaggi) | C | ❌ | **Accantonato per rischio autenticazione (Cognito), non per ToS** — utente ha rifiutato l'automazione del login Premium |

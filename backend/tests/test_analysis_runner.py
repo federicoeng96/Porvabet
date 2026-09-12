@@ -14,11 +14,17 @@ from app.engine.decision.analysis_runner import (
     InsufficientDataError,
     run_analysis_for_match,
 )
-from app.ingestion.match_ingestion import get_or_create_competition, ingest_historical_match
-from app.models.enums import MarketCategory, ModelFamily
-from app.models.market import Market, MarketOutcome
+from app.ingestion.match_ingestion import (
+    get_or_create_competition,
+    get_or_create_season,
+    get_or_create_team,
+    ingest_historical_match,
+)
+from app.models.enums import MarketCategory, MatchStatus, ModelFamily
+from app.models.market import Market, MarketOutcome, OddsQuote
+from app.models.match import Match
 from app.models.prediction import AnalysisVersion, Prediction, RiskSelection
-from app.providers.base.dto import HistoricalMatchRecord
+from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord
 
 SYNTHETIC_TEAMS = ["Synth A", "Synth B", "Synth C", "Synth D"]
 
@@ -83,6 +89,111 @@ def test_run_analysis_produces_full_ladder(db_session):
 
     mains = [s for s in selections if s.rank == 1]
     assert len(mains) == 10
+
+
+class _FakeLiveOddsProvider:
+    """Minimal OddsProvider double — proves `run_analysis_for_match` actually
+    calls whatever provider it's given for a not-yet-played fixture, without
+    depending on real Betfair credentials/network."""
+
+    source_key = "fake_live"
+    category = None
+    bookmaker_name = "FakeLive"
+
+    def __init__(self, records=None, raises: bool = False):
+        self._records = records or []
+        self._raises = raises
+        self.calls = 0
+
+    def is_available(self) -> bool:
+        return True
+
+    def get_odds_for_match(self, home_team_name, away_team_name, kickoff_utc_iso):
+        self.calls += 1
+        if self._raises:
+            raise RuntimeError("simulated live odds fetch failure")
+        return self._records
+
+
+def test_run_analysis_fetches_live_odds_for_a_scheduled_fixture(db_session):
+    """A not-yet-played match starts with zero Market/OddsQuote rows (unlike
+    every match `_seed_matches` creates, which always comes with closing
+    odds) — `run_analysis_for_match` must call the given odds provider and
+    use what it returns, not just skip the market for lack of any quote."""
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    home = get_or_create_team(db_session, "Synth A")
+    away = get_or_create_team(db_session, "Synth B")
+    future_match = Match(
+        season_id=season.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_utc=last_kickoff + timedelta(days=7),
+        status=MatchStatus.SCHEDULED,
+        external_ref="synth:future:live-odds",
+    )
+    db_session.add(future_match)
+    db_session.flush()
+    assert db_session.scalars(select(Market).where(Market.match_id == future_match.id)).all() == []
+
+    now = last_kickoff + timedelta(days=6)
+    provider = _FakeLiveOddsProvider(
+        [
+            OddsQuoteRecord("Betfair", "1X2", "HOME", 2.0, now, is_closing=False),
+            OddsQuoteRecord("Betfair", "1X2", "DRAW", 3.3, now, is_closing=False),
+            OddsQuoteRecord("Betfair", "1X2", "AWAY", 3.8, now, is_closing=False),
+        ]
+    )
+
+    result = run_analysis_for_match(db_session, future_match.id, odds_provider=provider)
+    db_session.flush()
+
+    assert provider.calls == 1
+    assert len(result.risk_levels) > 0
+    markets = db_session.scalars(select(Market).where(Market.match_id == future_match.id)).all()
+    assert any(m.category.value == "MATCH_RESULT" for m in markets)
+    odds = db_session.scalars(
+        select(OddsQuote)
+        .join(MarketOutcome, OddsQuote.market_outcome_id == MarketOutcome.id)
+        .join(Market, MarketOutcome.market_id == Market.id)
+        .where(Market.match_id == future_match.id)
+    ).all()
+    assert {o.bookmaker for o in odds} == {"Betfair"}
+
+
+def test_run_analysis_survives_live_odds_provider_failure(db_session):
+    """A provider raising (network down, bad response) must never abort the
+    whole analysis — it degrades to whatever OddsQuote rows already exist
+    (none, here), which correctly yields InsufficientDataError rather than a
+    crash or fabricated data."""
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    home = get_or_create_team(db_session, "Synth C")
+    away = get_or_create_team(db_session, "Synth D")
+    future_match = Match(
+        season_id=season.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_utc=last_kickoff + timedelta(days=7),
+        status=MatchStatus.SCHEDULED,
+        external_ref="synth:future:failing-provider",
+    )
+    db_session.add(future_match)
+    db_session.flush()
+
+    provider = _FakeLiveOddsProvider(raises=True)
+
+    with pytest.raises(InsufficientDataError):
+        run_analysis_for_match(db_session, future_match.id, odds_provider=provider)
+    assert provider.calls == 1
 
 
 def _well_calibrated_full_range_bets() -> list[BetRecord]:

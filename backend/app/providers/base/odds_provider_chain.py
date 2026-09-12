@@ -31,6 +31,31 @@ from app.providers.base.odds_provider import OddsProvider
 logger = logging.getLogger(__name__)
 
 
+def build_default_odds_provider_chain() -> "FallbackOddsProvider":
+    """The concrete provider composition this module's docstring recommends:
+    Betfair Exchange first (real, working, no ToS risk), then the two
+    documented-but-blocked stubs, kept in the chain so it starts contributing
+    the moment either is unblocked without any caller change. Imported here
+    (rather than at module import time) to avoid a hard import-time
+    dependency from this generic orchestrator module onto specific concrete
+    provider packages."""
+    from app.providers.betfair.provider import BetfairExchangeOddsProvider
+    from app.providers.betson_diretta.provider import BetsonDirettaOddsProvider
+    from app.providers.livescore.provider import LivescoreOddsProvider
+
+    return FallbackOddsProvider(
+        [
+            BetfairExchangeOddsProvider(),
+            # User-authorized ToS override, already accepted project-wide — see
+            # DATA_SOURCES.md and this class' own module docstring. Still
+            # `is_available() == False` today (verified technical blocker), so
+            # this contributes nothing at runtime, but is kept ready.
+            BetsonDirettaOddsProvider(acknowledge_user_override=True),
+            LivescoreOddsProvider(),
+        ]
+    )
+
+
 class FallbackOddsProvider(OddsProvider):
     """Tries each provider in `providers` order; returns the first non-empty
     result. A provider that reports `is_available() is False`, or that raises
