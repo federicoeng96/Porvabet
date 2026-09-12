@@ -196,7 +196,19 @@ interfacce, senza refactoring del pre-match.
   Verifica di rendering nel browser non eseguita (nessun Playwright/browser
   driver installato in questo repo) — verificato invece `tsc --noEmit` pulito
   e il contratto JSON confermato identico lato backend/frontend.
-- Persistenza lato server della schedina (oggi è stato automaticamente
-  derivato dallo stato client, mai salvato — coerente col fatto che il brief
-  non richiede una cronologia scommesse, ma se servisse andrebbe aggiunta una
-  tabella dedicata).
+- ⚠️ **Persistenza lato server della schedina — non implementata, ambiguità
+  reale non risolvibile leggendo la documentazione esistente.** Valutato in
+  questa sessione: la "schedina" oggi non è una lista che l'utente compone
+  (nessun pulsante "aggiungi"/"rimuovi") — è una vista **derivata** dallo
+  stato client (`groupRisk`/`perMatchRisk` in `page.tsx`, "qual è la
+  selezione principale per il livello di rischio scelto, per ogni partita
+  visibile ora"). Persisterla lato server richiederebbe decisioni di
+  prodotto non specificate da nessuna parte: cosa si salva esattamente (le
+  preferenze di rischio? le selezioni risolte in quel momento, che possono
+  cambiare a ogni "AGGIORNA ANALISI"?), e soprattutto **non esiste alcun
+  modello utente/sessione in questo progetto** (nessuna tabella `User`,
+  nessuna autenticazione) — servirebbe inventarne uno da zero solo per capire
+  "di chi" è la schedina da salvare. Il brief non richiede una cronologia
+  scommesse e ROADMAP.md lo trattava già come condizionale ("se servisse").
+  Non implementato autonomamente: è esattamente il tipo di ambiguità che
+  richiede una decisione esplicita, non un'assunzione.
