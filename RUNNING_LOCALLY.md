@@ -36,6 +36,18 @@ verso Betfair — login, `getDeveloperAppKeys`, copertura mercati 1X2/O-U
 — non può essere completata dentro la sandbox e va fatta dal computer
 dell'utente.
 
+**Non tutte le fonti sono bloccate allo stesso modo — football-data.org è
+un'eccezione importante.** Verificato dal vivo in questa sessione: la rete
+della sandbox raggiunge `api.football-data.org` normalmente (una chiamata
+pubblica reale a `/v4/areas/2072` ha risposto 200; un token non valido ha
+correttamente risposto "token invalido", non un blocco di rete). Quindi, a
+differenza di Betfair, **una volta ottenuta una chiave gratuita**
+(registrazione su football-data.org), la verifica end-to-end di
+`FootballDataOrgFixtureProvider`/`scripts/ingest_upcoming_fixtures.py` può
+essere fatta anche da dentro questo tipo di ambiente sandbox, non solo dal
+computer dell'utente — non serve necessariamente aspettare una sessione
+locale per quella parte specifica.
+
 ## Prerequisiti
 
 - Python 3.11+
@@ -47,6 +59,10 @@ dell'utente.
   stesso da `apps.betfair.com` ("Accounts API Demo Tool", operazione
   `createDeveloperAppKeys`) o dal tuo account Betfair — è un passo manuale
   una tantum, questo progetto non lo automatizza (vedi `DATA_SOURCES.md`).
+- Una chiave gratuita di football-data.org (`FOOTBALL_DATA_ORG_API_KEY`) —
+  registrazione gratuita su `football-data.org` ("Get started"), serve per
+  popolare la prossima giornata di Premier League/Serie A
+  (`scripts/ingest_upcoming_fixtures.py`).
 
 ## Setup
 
@@ -72,6 +88,7 @@ DATABASE_URL=postgresql+psycopg://porvabet:porvabet_dev@localhost:5432/porvabet
 BETFAIR_USERNAME=<il tuo username Betfair>
 BETFAIR_PASSWORD=<la tua password Betfair>
 BETFAIR_APP_KEY=<la tua Delayed Application Key>
+FOOTBALL_DATA_ORG_API_KEY=<la tua chiave gratuita football-data.org>
 ```
 
 **Non incollare mai questi valori in una chat, in un issue, in un commit o in

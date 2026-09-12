@@ -16,11 +16,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.core import Competition, Season, Source, Team
-from app.models.enums import DataSourceCategory, MarketCategory
+from app.models.enums import DataSourceCategory, MarketCategory, MatchStatus
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
-from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord
+from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord, UpcomingFixtureRecord
 
 # outcome_code -> (market category, market label, outcome label) for the live
 # markets an OddsProvider (e.g. BetfairExchangeOddsProvider) can return today —
@@ -156,8 +156,6 @@ def ingest_historical_match(db: Session, record: HistoricalMatchRecord) -> Match
     match.away_goals_ft = record.away_goals_ft
     match.home_goals_ht = record.home_goals_ht
     match.away_goals_ht = record.away_goals_ht
-    from app.models.enums import MatchStatus
-
     match.status = MatchStatus.FINISHED
 
     _ingest_1x2_odds(db, match, record.closing_odds_1x2)
@@ -165,6 +163,45 @@ def ingest_historical_match(db: Session, record: HistoricalMatchRecord) -> Match
     _ingest_team_stats(db, match, home_team, record, is_home=True)
     _ingest_team_stats(db, match, away_team, record, is_home=False)
 
+    return match
+
+
+def ingest_upcoming_fixture(db: Session, record: UpcomingFixtureRecord) -> Match:
+    """Persists a not-yet-played fixture (e.g. from
+    `FootballDataOrgFixtureProvider.get_next_matchday_fixtures`) as a
+    `MatchStatus.SCHEDULED` `Match` row — no goals, no odds, no stats (none
+    exist yet for a match that hasn't been played). Idempotent on
+    `external_ref`, same pattern as `ingest_historical_match`: re-running this
+    for the same fixture (e.g. a kickoff-time correction before the match is
+    played) updates the existing row rather than creating a duplicate. Never
+    overwrites a match that has since finished — see the guard below."""
+    competition = get_or_create_competition(db, record.competition_code)
+    season = get_or_create_season(db, competition, record.season_label)
+    home_team = get_or_create_team(db, record.home_team_name)
+    away_team = get_or_create_team(db, record.away_team_name)
+
+    match = db.scalar(select(Match).where(Match.external_ref == record.external_ref))
+    if match is None:
+        match = Match(
+            season_id=season.id,
+            home_team_id=home_team.id,
+            away_team_id=away_team.id,
+            kickoff_utc=record.kickoff_utc,
+            status=MatchStatus.SCHEDULED,
+            external_ref=record.external_ref,
+        )
+        db.add(match)
+        db.flush()
+        return match
+
+    if match.status == MatchStatus.FINISHED:
+        # A later re-run of this ingestion (e.g. a stale next-matchday fetch)
+        # must never revert a since-completed match back to SCHEDULED or
+        # touch its real result — historical ingestion is the only path
+        # allowed to set FINISHED/goals for this external_ref.
+        return match
+
+    match.kickoff_utc = record.kickoff_utc
     return match
 
 

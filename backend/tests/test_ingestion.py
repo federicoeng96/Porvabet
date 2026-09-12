@@ -13,13 +13,14 @@ from app.ingestion.match_ingestion import (
     get_or_create_team,
     ingest_historical_match,
     ingest_live_odds_quotes,
+    ingest_upcoming_fixture,
     resolve_understat_team_name,
 )
 from app.models.enums import MatchStatus
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
-from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord
+from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord, UpcomingFixtureRecord
 
 
 def _sample_record(external_ref="synthetic:test:1") -> HistoricalMatchRecord:
@@ -271,3 +272,82 @@ def test_ingest_live_odds_quotes_skips_unrecognized_outcome_codes(db_session):
     assert written == 0
     markets = db_session.scalars(select(Market).where(Market.match_id == match.id)).all()
     assert markets == []
+
+
+def test_ingest_upcoming_fixture_creates_scheduled_match(db_session):
+    record = UpcomingFixtureRecord(
+        competition_code="EPL",
+        season_label="2026/2027",
+        kickoff_utc=datetime(2026, 9, 20, 14, 0, tzinfo=UTC),
+        home_team_name="Synthetic Arsenal",
+        away_team_name="Synthetic Chelsea",
+        external_ref="football_data_org:900001",
+    )
+
+    match = ingest_upcoming_fixture(db_session, record)
+    db_session.flush()
+
+    assert match.status == MatchStatus.SCHEDULED
+    assert match.home_team.name == "Synthetic Arsenal"
+    assert match.away_team.name == "Synthetic Chelsea"
+    assert match.home_goals_ft is None
+    assert match.away_goals_ft is None
+    assert match.kickoff_utc == datetime(2026, 9, 20, 14, 0, tzinfo=UTC)
+
+
+def test_ingest_upcoming_fixture_is_idempotent(db_session):
+    record = UpcomingFixtureRecord(
+        competition_code="EPL",
+        season_label="2026/2027",
+        kickoff_utc=datetime(2026, 9, 20, 14, 0, tzinfo=UTC),
+        home_team_name="Synthetic Arsenal",
+        away_team_name="Synthetic Chelsea",
+        external_ref="football_data_org:900002",
+    )
+
+    match1 = ingest_upcoming_fixture(db_session, record)
+    db_session.flush()
+    # Re-fetched a day later with a corrected kickoff time (TV rescheduling).
+    corrected = UpcomingFixtureRecord(
+        competition_code="EPL",
+        season_label="2026/2027",
+        kickoff_utc=datetime(2026, 9, 21, 12, 30, tzinfo=UTC),
+        home_team_name="Synthetic Arsenal",
+        away_team_name="Synthetic Chelsea",
+        external_ref="football_data_org:900002",
+    )
+    match2 = ingest_upcoming_fixture(db_session, corrected)
+    db_session.flush()
+
+    assert match1.id == match2.id
+    all_matches = db_session.scalars(
+        select(Match).where(Match.external_ref == "football_data_org:900002")
+    ).all()
+    assert len(all_matches) == 1
+    assert match2.kickoff_utc == datetime(2026, 9, 21, 12, 30, tzinfo=UTC)
+
+
+def test_ingest_upcoming_fixture_never_reverts_a_finished_match(db_session):
+    """If a stale next-matchday fetch is re-run after the match has already
+    been played and ingested as FINISHED (via ingest_historical_match), this
+    must never revert its status or touch its real result."""
+    historical = _sample_record(external_ref="football_data_org:already-finished")
+    finished_match = ingest_historical_match(db_session, historical)
+    db_session.flush()
+    assert finished_match.status == MatchStatus.FINISHED
+
+    stale_fixture = UpcomingFixtureRecord(
+        competition_code="EPL",
+        season_label="2024/2025",
+        kickoff_utc=datetime(2099, 1, 1, tzinfo=UTC),  # obviously wrong if it were applied
+        home_team_name="Synthetic United",
+        away_team_name="Synthetic City",
+        external_ref="football_data_org:already-finished",
+    )
+    result = ingest_upcoming_fixture(db_session, stale_fixture)
+    db_session.flush()
+
+    assert result.id == finished_match.id
+    assert result.status == MatchStatus.FINISHED
+    assert result.home_goals_ft == 2  # untouched
+    assert result.kickoff_utc != datetime(2099, 1, 1, tzinfo=UTC)

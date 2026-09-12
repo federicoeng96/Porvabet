@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     # never fall back to fabricated data.
     api_football_key: str | None = None
 
+    # football-data.org (category A — see DATA_SOURCES.md): free key from the
+    # user's own account, used only to fetch the next matchday's fixtures for
+    # Premier League/Serie A. Absence means FootballDataOrgFixtureProvider
+    # degrades to is_available()=False, never a fabricated fixture.
+    football_data_org_api_key: str | None = None
+
     # Betfair Exchange (official API, personal account — see DATA_SOURCES.md).
     # `betfair_app_key` must be a Delayed (free) Application Key — this project
     # never uses a Live App Key. All three optional; absence means

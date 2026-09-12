@@ -35,6 +35,23 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         "in this session). Requires API key. See DATA_SOURCES.md.",
     ),
     SourceDefinition(
+        key="football_data_org",
+        name="football-data.org",
+        category=DataSourceCategory.A_UNRESTRICTED,
+        is_implemented=True,
+        notes="Fixture/calendar source (next matchday only) for Premier League/Serie A — "
+        "the only real fixture source in this project (football-data.co.uk is "
+        "historical-only). Verified live this session: v4 REST API "
+        "(api.football-data.org/v4), X-Auth-Token header auth, free tier confirmed "
+        "to include PL+SA with Fixtures/Schedules at 10 req/min. No public ToS page "
+        "found (404 on /terms,/legal,/tos) — same caveat as API-Football: this API's "
+        "purpose is third-party programmatic access, so no ToS-interpretation risk "
+        "was weighed the way it is for scraped sites. Requires a free API key "
+        "(FOOTBALL_DATA_ORG_API_KEY) not available in this session — tested against "
+        "the real, verified v4 JSON shape via a mock transport, not live. See "
+        "DATA_SOURCES.md.",
+    ),
+    SourceDefinition(
         key="understat",
         name="understat.com",
         category=DataSourceCategory.B_PERSONAL_USE_ONLY,

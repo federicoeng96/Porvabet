@@ -112,6 +112,74 @@ e `app/ingestion/source_registry.py`):
   richiede una chiave (`API_FOOTBALL_KEY`) — senza chiave `is_available()` ritorna
   `False` e il layer di ingestione deve saltare la fonte, mai inventare dati.
 
+### football-data.org — **fonte reale di calendario/fixture future**
+- **Perché serve una fonte dedicata**: football-data.co.uk (fonte primaria di
+  questo progetto) pubblica solo CSV storici di partite già giocate — non è
+  mai stata una fonte di calendario. Verificato con una query diretta sul DB
+  reale: 7.600 partite ingerite, 0 con kickoff futuro. Senza una vera fonte
+  di fixture, non esiste alcuna "prossima giornata" su cui far girare
+  `run_analysis_for_match` per una partita non ancora giocata.
+- **Perché football-data.org e non diretta.it**: un piano precedente per
+  questo stesso problema considerava diretta.it (già un override ToS
+  esplicito accettato dall'utente, ma solo per le *quote* — v.
+  `app.providers.betson_diretta`). Verificato dal vivo in questa sessione:
+  anche il calendario/le partite di diretta.it sono caricati via JS lato
+  client, non presenti nell'HTML server-rendered (fetch diretto di
+  `https://www.diretta.it/calcio/inghilterra/premier-league/`: pagina di
+  783KB, zero contenitori partita con le classi CSS attese
+  `event__match`/`event__participant`; i dati reali arrivano da un feed
+  GraphQL su `400.ds.lsapp.eu` il cui schema di firma delle richieste non è
+  documentato da nessuna parte raggiungibile in questa sessione) — esattamente
+  lo stesso blocco già documentato per le quote Betson. Costruire uno
+  scraper su una firma di richiesta indovinata sarebbe esattamente la "fonte
+  inventata" che questo progetto evita. football-data.org è invece un'API
+  REST pubblica, documentata, pensata esattamente per questo uso.
+- **Verificato dal vivo in questa sessione, non assunto**:
+  - Base URL `https://api.football-data.org/v4`, raggiungibile da questo
+    ambiente sandbox (a differenza di Betfair, bloccato da un WAF
+    geografico): una chiamata non autenticata a `/v4/areas/2072` (endpoint
+    libero) ha restituito un vero body JSON 200; una chiamata con un token
+    sintatticamente non valido ha restituito `400
+    {"message": "Your API token is invalid."}` — non un blocco di rete, solo
+    l'assenza di una chiave reale.
+  - Autenticazione: header `X-Auth-Token: <chiave>` (confermato sia dal
+    messaggio d'errore dell'API sia dalla pagina di documentazione ufficiale
+    `/documentation/api`).
+  - Endpoint usato: `GET /v4/competitions/{PL|SA}/matches?matchday=N` —
+    copiato da un esempio `curl` reale sulla documentazione v4 attuale
+    (`/documentation/quickstart`). `GET /v4/competitions/{code}` restituisce
+    `currentSeason.currentMatchday`, usato per trovare la giornata corrente
+    reale invece di indovinare un numero.
+  - **Piano gratuito confermato** (pagina pubblica `/pricing`): include sia
+    Premier League sia Serie A tra le 12 competizioni gratuite, con
+    "Fixtures, Schedules delayed" e **10 chiamate/minuto** — il
+    `RateLimiter(10, 60)` nel codice riprende esattamente questa cifra
+    pubblicata, non una stima conservativa come per altre fonti.
+  - **Nessuna pagina di Termini di Servizio pubblica trovata** (`/terms`,
+    `/terms-of-service`, `/legal`, `/tos` → tutti 404 in questa sessione) —
+    stessa cautela onesta già applicata ad API-Football: a differenza di un
+    sito consumer da cui estrarre dati, lo scopo stesso di questa API è
+    l'accesso programmatico di terze parti, quindi non c'è un rischio di
+    interpretazione ToS da pesare nello stesso modo di diretta.it — ma
+    l'assenza di una pagina da citare non va letta come "verificato pulito",
+    solo come "nessun divieto trovato da pesare".
+- **Scope, per istruzione esplicita**: solo la **prossima giornata** per
+  competizione, non un calendario stagionale completo —
+  `currentSeason.currentMatchday` dà già esattamente quel riferimento.
+- **Stato nel codice**: `FootballDataOrgFixtureProvider`
+  (`app/providers/football_data_org/provider.py`), categoria
+  `A_UNRESTRICTED`. Richiede una chiave gratuita
+  (`FOOTBALL_DATA_ORG_API_KEY`) — non disponibile in questa sessione, quindi
+  **non testato dal vivo**: testato contro una risposta JSON fedele allo
+  schema v4 reale verificato sopra, tramite `httpx.MockTransport`. La rete di
+  questo ambiente sandbox NON è bloccata verso questa API (a differenza di
+  Betfair) — una volta ottenuta una chiave gratuita, questo può essere
+  verificato dal vivo anche da qui, non solo dal computer dell'utente (v.
+  `RUNNING_LOCALLY.md`). `ingest_upcoming_fixture`
+  (`app/ingestion/match_ingestion.py`) persiste ogni fixture come `Match`
+  `SCHEDULED`, idempotente su `external_ref`, e non tocca mai una partita già
+  `FINISHED` da un'ingestione storica.
+
 ### fbref.com
 - **Cosa offre**: statistiche avanzate squadra/giocatore (tiri, passaggi, azioni
   difensive, metriche per-90).
@@ -1042,6 +1110,7 @@ Nessun provider Premier League aggiunto.
 | Fonte | Categoria | Implementata | Note |
 |---|---|---|---|
 | football-data.co.uk | A | ✅ | Fonte primaria di questo slice |
+| football-data.org | A | ✅ | Fixture/calendario (prossima giornata) — richiede chiave gratuita propria, non ancora testata dal vivo (nessuna chiave disponibile), rete non bloccata da qui |
 | API-Football | A | ✅ | Richiede chiave propria |
 | Open-Meteo | A | ✅ | Meteo |
 | RSS/Atom generico | A | ✅ | News, URL da configurazione |
