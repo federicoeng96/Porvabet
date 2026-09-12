@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     # never fall back to fabricated data.
     api_football_key: str | None = None
 
+    # Betfair Exchange (official API, personal account — see DATA_SOURCES.md).
+    # `betfair_app_key` must be a Delayed (free) Application Key — this project
+    # never uses a Live App Key. All three optional; absence means
+    # BetfairExchangeOddsProvider.is_available() returns False.
+    betfair_app_key: str | None = None
+    betfair_username: str | None = None
+    betfair_password: str | None = None
+
     cors_allow_origins: list[str] = ["http://localhost:3000"]
 
     env: str = "development"

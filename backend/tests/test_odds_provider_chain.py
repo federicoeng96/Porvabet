@@ -17,13 +17,16 @@ from app.providers.base.odds_provider_chain import FallbackOddsProvider
 
 
 class _FakeOddsProvider(OddsProvider):
-    def __init__(self, source_key, bookmaker_name, available, quotes=None, raises=False):
+    def __init__(
+        self, source_key, bookmaker_name, available, quotes=None, raises=False, raises_error=None
+    ):
         self.source_key = source_key
         self.bookmaker_name = bookmaker_name
         self.category = DataSourceCategory.C_ABSTRACT_ONLY
         self._available = available
         self._quotes = quotes or []
         self._raises = raises
+        self._raises_error = raises_error
         self.calls = 0
 
     def is_available(self) -> bool:
@@ -33,6 +36,8 @@ class _FakeOddsProvider(OddsProvider):
         self.calls += 1
         if self._raises:
             raise NotImplementedError("fake provider intentionally not implemented")
+        if self._raises_error:
+            raise self._raises_error
         return self._quotes
 
 
@@ -100,6 +105,21 @@ def test_falls_back_when_primary_raises_not_implemented():
 
 def test_falls_back_when_primary_returns_empty_list():
     primary = _FakeOddsProvider("primary", "Primary", available=True, quotes=[])
+    backup = _FakeOddsProvider("backup", "Backup", available=True, quotes=[_quote("Backup")])
+    chain = FallbackOddsProvider([primary, backup])
+
+    result = chain.get_odds_for_match("Home", "Away", "2026-09-12T18:45:00Z")
+
+    assert [q.bookmaker for q in result] == ["Backup"]
+
+
+def test_falls_back_when_primary_raises_an_unexpected_error():
+    # A real provider (e.g. Betfair) can fail for reasons that have nothing to
+    # do with "not implemented" — a network error, an expired session, etc.
+    # The chain must not let that take the whole call down.
+    primary = _FakeOddsProvider(
+        "primary", "Primary", available=True, raises_error=ConnectionError("boom")
+    )
     backup = _FakeOddsProvider("backup", "Backup", available=True, quotes=[_quote("Backup")])
     chain = FallbackOddsProvider([primary, backup])
 

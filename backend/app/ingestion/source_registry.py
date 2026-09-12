@@ -247,4 +247,19 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         "fragile prose parser. No equivalent Premier League source found matching "
         "Corriere dello Sport's Serie A quality in this session.",
     ),
+    SourceDefinition(
+        key="betfair_exchange",
+        name="Betfair Exchange (official Betting API, personal account)",
+        category=DataSourceCategory.D_OFFICIAL_API_PERSONAL_ACCOUNT,
+        is_implemented=True,
+        notes="Not a scraped source — official, documented API (developer.betfair.com) "
+        "accessed via the user's own account and a free Delayed Application Key "
+        "(1-180s delayed, never the paid Live key). Uses betfairlightweight (real, "
+        "actively-existing third-party client) with Interactive Login (no SSL cert "
+        "needed). Exchange back price, not a bookmaker quote — always labeled "
+        "'Betfair (exchange, dati ritardati 1-180s)'. Not exercised against live "
+        "Betfair data in this session (no account/credentials available) — request-"
+        "building/parsing logic unit-tested against betfairlightweight's own real "
+        "resource classes, not live-verified. See DATA_SOURCES.md.",
+    ),
 ]

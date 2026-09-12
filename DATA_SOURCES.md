@@ -40,6 +40,7 @@ e `app/ingestion/source_registry.py`):
 - **A** — Utilizzabile senza riserve particolari (ToS compatibili, gratuita).
 - **B** — Utilizzabile solo per uso personale non commerciale — rischio accettato esplicitamente dall'utente.
 - **C** — Da NON implementare come provider dati diretto — solo interfaccia astratta.
+- **D** — API ufficiale e documentata, accesso via account personale dell'utente — nessun rischio ToS/scraping da classificare (diversa per natura da A/B/C, non solo per livello di rischio).
 
 ---
 
@@ -622,6 +623,109 @@ pronta per quando (e se) una delle due fonti reali verrà completata. Nessuna
 delle due fonti fornisce oggi quote reali al Value/Odds Engine, che continua
 a usare esclusivamente football-data.co.uk per le quote storiche.
 
+## Categoria D — API ufficiali (accesso via account personale, non scraping)
+
+Questa categoria è concettualmente diversa da A/B/C: quelle classificano il
+**rischio ToS di uno scraping**. Qui non c'è scraping — è un'API ufficiale e
+documentata, usata tramite l'account personale dell'utente, esattamente come
+il fornitore si aspetta che le app di terze parti la usino. Non ha senso
+applicarle la stessa scala A/B/C; da qui la nuova categoria
+`D_OFFICIAL_API_PERSONAL_ACCOUNT` in `app.models.enums.DataSourceCategory`
+(richiede la migrazione Alembic `8f3b1c9d4a21`, perché la colonna `category`
+di `sources` è un ENUM nativo Postgres).
+
+### Betfair Exchange — quote pre-match ufficiali (Betting API)
+
+**Perché è diversa da ogni altra fonte quote di questo progetto**: ePlay24,
+Betson (via diretta.it) e livescore.com sono tutti siti da cui *estrarre*
+dati (scraping, con relativo rischio ToS). Betfair Exchange è invece
+un'**API ufficiale e documentata** (`developer.betfair.com`), autenticata con
+l'account Betfair personale dell'utente — nessuno scraping, nessuna
+interpretazione ToS da fare.
+
+**1. Autenticazione — verificata via ricerca diretta della documentazione
+ufficiale (developer.betfair.com / betfair-developer-docs.atlassian.net),
+non assunta:**
+- **Interactive Login** (`POST https://identitysso.betfair.com/api/login`,
+  header `X-Application: <AppKey>`, form-encoded `username`/`password`) —
+  **nessun certificato SSL richiesto**. Scelta di questo progetto.
+- **Non-Interactive/"bot" Login** (`identitysso-cert.betfair.com`) — richiede
+  generare e caricare sul proprio account un certificato SSL auto-firmato;
+  è il metodo che Betfair raccomanda per bot/uso non presidiato, ma aggiunge
+  complessità di gestione certificati non giustificata per un uso
+  intermittente di analisi pre-match personale (non trading ad alta
+  frequenza) — scelta ingegneristica esplicita, non una svista.
+- **Application Key**: `createDeveloperAppKeys` (Accounts API) crea sia una
+  chiave **Delayed** (gratuita, attiva subito, dati con ritardo 1-180s) sia
+  una **Live** (inattiva, richiede verifica KYC completa + una tantum di
+  circa £499 di attivazione). Questo progetto **usa solo la Delayed key** —
+  la Live non serve e non viene mai richiesta. **Ottenere la Delayed key è un
+  passo manuale una tantum che l'utente deve fare da sé** (login sul sito
+  Betfair, poi `createDeveloperAppKeys` o l'"Accounts API Demo Tool" su
+  apps.betfair.com) — nessun codice di questo progetto può o deve
+  automatizzarlo.
+
+**2. Endpoint usati — Sports API-NG (Betting API), operazioni verificate
+tramite la documentazione ufficiale**: `listEventTypes` (trova l'id di
+"Soccer"), `listMarketCatalogue` (filtrato per `eventTypeIds`,
+`marketTypeCodes: ["MATCH_ODDS"]`, `textQuery` con i nomi delle due squadre,
+`marketStartTime` centrato sul kickoff — con proiezione
+`RUNNER_DESCRIPTION`/`EVENT` per avere nomi giocatori/squadre), `listMarketBook`
+(quote back/lay correnti per i mercati trovati, con `priceProjection:
+EX_BEST_OFFERS`).
+
+**3. Libreria Python**: usata `betfairlightweight` (reale, repo attivo su
+GitHub sotto l'organizzazione `betcode-org`, installata e verificata in
+questo ambiente) invece di costruire un client HTTP/JSON-RPC da zero, come
+richiesto — gestisce sessione, login, costruzione richieste e parsing delle
+risposte nei suoi tipi (`MarketCatalogue`, `MarketBook`, ecc.), riducendo il
+rischio di un formato richiesta sottilmente sbagliato scritto a mano.
+`flumine` (stesso gruppo, framework di trading più pesante costruito sopra
+`betfairlightweight`) è stato considerato ma non usato: questo progetto legge
+solo quote, non piazza ordini, quindi non serve un framework di trading
+completo.
+
+**4. Rate limiting**: nessun limite numerico ufficiale documentato per le
+operazioni di sola lettura della Betting API è stato trovato (il login è
+limitato a 100 tentativi/minuto, documentato). Il rate limiting nel codice
+(`RateLimiter(30, 60)`) è quindi un budget conservativo scelto da questo
+progetto, non una cifra pubblicata da Betfair — dichiarato come tale nel
+codice, non spacciato per un vincolo ufficiale.
+
+**5. Betfair è un exchange, non un bookmaker — mai confuso nel codice/UI.**
+Le quote sono il miglior prezzo "back" (scommessa contro altri utenti), non
+il prezzo di un banco. Ogni quota è etichettata
+`"Betfair (exchange, dati ritardati 1-180s)"`, mai genericamente
+"bookmaker", e il `market_label` di ogni quota include esplicitamente
+"Betfair" per la stessa ragione.
+
+**6. Copertura mercati — non verificata dal vivo in questa sessione (nessuna
+credenziale disponibile)**: fonti secondarie indicano che i mercati Match
+Odds per Premier League/Serie A vengono tipicamente creati con giorni di
+anticipo, con liquidità bassa nelle fasi iniziali — non è una garanzia
+ufficiale Betfair, e non è stata confermata con una richiesta live in questa
+sessione. Se un mercato non esiste ancora per una partita, il provider
+restituisce una lista vuota, mai un prezzo inventato.
+
+**7. Non testato contro l'API live in questa sessione (nessun account
+Betfair disponibile)** — la logica di costruzione richieste/parsing risposte
+è stata testata con un client finto costruito con le **classi di risorse
+reali** di `betfairlightweight` (`EventTypeResult`, `MarketCatalogue`,
+`MarketBook`, ecc., con gli stessi nomi di campo camelCase delle risposte
+JSON reali di Betfair), non contro dati live. **Serve verifica con
+credenziali reali dell'utente prima di potersi fidare di questa fonte per
+un'analisi vera** — stesso standard di onestà già applicato a tutte le altre
+fonti mai testate dal vivo in questa sessione.
+
+**Stato nel codice**: `BetfairExchangeOddsProvider`
+(`app/providers/betfair/provider.py`), categoria
+`D_OFFICIAL_API_PERSONAL_ACCOUNT`, `is_implemented=True` nel registro. Le
+credenziali (`betfair_app_key`/`betfair_username`/`betfair_password`) sono
+lette da variabili d'ambiente tramite `app.config.Settings` (stesso standard
+già in uso per `API_FOOTBALL_KEY`) — mai hardcoded, mai in chiaro nei log.
+`is_available()` ritorna `False` senza tutte e tre; l'assenza degrada
+correttamente, non fabbrica quote.
+
 ### FantaLab — moduli/titolari/tiratori/ballottaggi (Serie A) — **ACCANTONATO**
 
 > **Stato finale: accantonato su decisione esplicita dell'utente, per
@@ -891,4 +995,5 @@ Nessun provider Premier League aggiunto.
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
 | Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
 | livescore.com (quote, backup) | C | ❌ | Auditata da zero; quote dietro widget affiliato gated, mai osservate dal vivo |
+| Betfair Exchange (quote ufficiali) | D | ✅ | API ufficiale via account personale — implementata, non testata dal vivo (nessuna credenziale disponibile) |
 | FantaLab (moduli/titolari/ballottaggi) | C | ❌ | **Accantonato per rischio autenticazione (Cognito), non per ToS** — utente ha rifiutato l'automazione del login Premium |

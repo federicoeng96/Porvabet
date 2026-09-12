@@ -34,19 +34,34 @@ livescore.com (auditato indipendentemente come backup, gruppo societario
 diverso) mostra le proprie quote solo dietro un sistema di widget
 affiliati con gate paese/utente (`isAdult`/`notSelfExcluded`/`hasBetFeatures`)
 mai osservato con dati reali in questa sessione. `FallbackOddsProvider`
-(`app/providers/base/odds_provider_chain.py`) implementa comunque la logica di
-fallback tra le due fonti (Betson/diretta.it priorità di default, livescore.com
-backup) in modo che, quando una delle due verrà davvero completata (in un
-ambiente capace di eseguire un browser reale), l'altra si inserisca senza
-modificare i chiamanti — oggi la catena non ha nulla di reale su cui fare
-fallback.
+(`app/providers/base/odds_provider_chain.py`) implementa la logica di
+fallback tra le fonti in modo che, quando una verrà completata/verificata,
+si inserisca senza modificare i chiamanti.
+
+**Betfair Exchange cambia questo quadro** (v. DATA_SOURCES.md, categoria
+`D_OFFICIAL_API_PERSONAL_ACCOUNT`): non è una fonte scraped, è l'API
+ufficiale Betting di Betfair usata tramite l'account personale dell'utente —
+nessun rischio ToS da valutare. `BetfairExchangeOddsProvider`
+(`app/providers/betfair/provider.py`) è implementato e testato (contro un
+client finto costruito con le classi di risorse reali di
+`betfairlightweight`), ma **non ancora verificato contro l'API live**:
+nessuna credenziale Betfair era disponibile in questa sessione. Priorità
+raccomandata nella catena di fallback: **Betfair per primo** (unica fonte
+qui che è realmente un'API funzionante, quando l'utente configura le
+credenziali), poi Betson/diretta.it, poi livescore.com come li documenta
+`odds_provider_chain.py` — nessun punto del codice compone ancora questa
+catena di default per l'engine live (v. sotto), quindi oggi è comunque solo
+una possibilità pronta, non qualcosa già in esecuzione.
 
 Conseguenza architetturale: finché `EPlay24OddsProvider`, `BetsonDirettaOddsProvider`
-e `LivescoreOddsProvider` restano interfacce senza implementazione funzionante
+e `LivescoreOddsProvider` restano interfacce senza implementazione funzionante,
+e `BetfairExchangeOddsProvider` resta implementato ma non verificato dal vivo
 (v. `app/providers/eplay24/`, `app/providers/betson_diretta/`,
-`app/providers/livescore/`), questo progetto è, di fatto, **un motore di stima
-(probabilità + quota fair), non un motore di value betting contro un book
-reale in tempo reale**. Il "value" e
+`app/providers/livescore/`, `app/providers/betfair/`), questo progetto è, di
+fatto, **un motore di stima (probabilità + quota fair), non ancora un motore
+di value betting verificato contro un book reale in tempo reale** — Betfair
+è la prima fonte di questo progetto per cui manca "solo" la verifica con
+credenziali reali, non anche un blocco tecnico o ToS. Il "value" e
 gli alert mostrati oggi nell'interfaccia sono sempre calcolati contro le
 quote della fonte realmente disponibile (football-data.co.uk — quote reali di
 altri bookmaker, mai simulate), e sono **etichettati esplicitamente con il nome

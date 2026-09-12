@@ -303,3 +303,20 @@ interfacce, senza refactoring del pre-match.
   che il limite del browser headless sia risolto — v. ARCHITECTURE.md), va
   ripreso da qui: a quel punto costruire il frontend per la colonna ALERT
   avrebbe un motivo concreto, cosa che oggi ancora non ha.
+- ⚠️ **Aggiornamento dopo Betfair Exchange — il quadro cambia, ma non è
+  ancora "sbloccato".** `BetfairExchangeOddsProvider` (v. DATA_SOURCES.md,
+  ARCHITECTURE.md) è una fonte quote **ufficiale**, non scraped: nessun
+  blocco tecnico d'ambiente né rischio ToS come Betson/livescore. Questa è
+  la prima fonte quote di questo progetto per cui manca "solo" la verifica
+  con credenziali reali dell'utente (mai testata dal vivo in questa sessione
+  — nessun account Betfair disponibile), non anche un ostacolo strutturale.
+  **Non ancora sufficiente per dichiarare la colonna ALERT sbloccata**: finché
+  non viene verificata con dati reali (e finché nessun punto del codice
+  compone `FallbackOddsProvider`/`BetfairExchangeOddsProvider` dentro
+  `run_analysis_for_match`, cosa non fatta in questo turno perché non
+  richiesta esplicitamente), il Value/Odds Engine continua a usare solo
+  football-data.co.uk per le quote reali. Prossimo passo concreto, quando
+  l'utente fornirà le credenziali Betfair: verificare `get_odds_for_match`
+  contro l'API live per una partita reale, poi valutare se collegare la
+  fonte all'engine e costruire la colonna ALERT nel frontend — a quel punto
+  avrebbe finalmente un motivo concreto e verificato, non solo teorico.

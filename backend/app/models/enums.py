@@ -2,11 +2,20 @@ import enum
 
 
 class DataSourceCategory(str, enum.Enum):
-    """Legal/technical usability category for a data source, per DATA_SOURCES.md."""
+    """Legal/technical usability category for a data source, per DATA_SOURCES.md.
+
+    A/B/C classify *scraped* sources by ToS risk. `D_OFFICIAL_API_PERSONAL_ACCOUNT`
+    is a different kind of thing entirely: an official, documented API accessed
+    through the user's own account (e.g. Betfair Exchange's Betting API) — there
+    is no scraping/ToS-interpretation risk to classify, the access itself is
+    legitimate by design. Never assign this to a source that is actually being
+    scraped just to avoid the A/B/C risk conversation.
+    """
 
     A_UNRESTRICTED = "A_UNRESTRICTED"
     B_PERSONAL_USE_ONLY = "B_PERSONAL_USE_ONLY"
     C_ABSTRACT_ONLY = "C_ABSTRACT_ONLY"
+    D_OFFICIAL_API_PERSONAL_ACCOUNT = "D_OFFICIAL_API_PERSONAL_ACCOUNT"
 
 
 class MatchStatus(str, enum.Enum):
