@@ -83,3 +83,10 @@ completi — è un indice.
   `TacticalFeature` reali (fail-conservative, mai un verdetto indovinato) —
   nessuna fonte reale di segnali (news/LLM/manuale) esiste ancora, non
   fabbricata. Nessuna nuova tabella DB (dataclass in memoria).
+- `46397fa` — Aggiornato CHANGELOG.
+- `c818bfa` — xG di understat collegato a Dixon-Coles (correzione lambda/mu
+  basata su xG-vs-gol-reali, leak-free, clippata, mai applicata sotto 5
+  partite di dato). Backtestato su EPL+Serie A 2023/24: migliora davvero
+  l'EPL (Brier/log loss/calibrazione code alte), non aiuta la Serie A —
+  **non attivata di default** per nessuno dei due campionati, decisione
+  basata sui numeri, codice testato ma non collegato al layer live.
