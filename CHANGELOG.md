@@ -53,3 +53,8 @@ completi — è un indice.
   transazioni nei test (`join_transaction_mode="create_savepoint"`),
   scoperto scrivendo i primi test a livello API del progetto. Verificato
   anche end-to-end con curl contro il DB dev reale.
+- `773b9ab` — Aggiornato CHANGELOG.
+- `4f00313` — Roadmap item 10 (parte 2, schedina): **non implementata**,
+  segnalata come ambiguità reale — non è chiaro cosa si dovrebbe salvare, e
+  non esiste alcun modello utente/sessione in questo progetto su cui
+  agganciarla. Nessuna decisione di prodotto presa autonomamente.
