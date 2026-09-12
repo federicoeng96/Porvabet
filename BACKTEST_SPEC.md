@@ -127,13 +127,49 @@ MODEL_SPEC.md), ma il ROI su HOME è più negativo (−4.8% EPL, −12.6% Serie 
 il mercato prezza il vantaggio-casa quantomeno altrettanto bene del modello.
 
 **Nota metodologica sullo scope ridotto**: un primo tentativo su tutte e 10 le
-stagioni con refit ogni 7 giorni (la configurazione di default) è stato
+stagioni con refit ogni 7 giorni (la configurazione di default) era stato
 interrotto dopo diversi minuti senza essere completato — troppo costoso per
-questa sessione. È stato rieseguito con `refit_batch_days=21` (refit ogni 3
-settimane invece che ogni settimana) su 6 stagioni invece di 10: una scelta di
-tempo, non un modo per nascondere risultati sfavorevoli — il codice e il
-comando usati sono entrambi documentati qui, riproducibili identicamente con
-più tempo a disposizione o hardware più potente.
+quella sessione. È stato quindi rieseguito con `refit_batch_days=21` (refit
+ogni 3 settimane invece che ogni settimana) su 6 stagioni invece di 10: una
+scelta di tempo, non un modo per nascondere risultati sfavorevoli.
+
+**Aggiornamento — refit=7 giorni su tutte e 10 le stagioni (ROADMAP.md punto
+2), completato**: con più tempo a disposizione, il backtest è stato rieseguito
+nella configurazione di default (`refit_batch_days=7`, tutte le 10 stagioni,
+3.800 partite per campionato invece di 2.280) — 192.8s per l'EPL, 170.9s per
+la Serie A. Confronto diretto con la configurazione ridotta sopra:
+
+| Segmento | n (21d/6 stag.) | Brier (21d/6) | LogLoss (21d/6) | n (7d/10 stag.) | Brier (7d/10) | LogLoss (7d/10) |
+|---|---|---|---|---|---|---|
+| EPL MATCH_RESULT | 13.158 | 0.1948 | 0.5768 | 27.964 | 0.1872 | 0.5628 |
+| EPL TOTAL_GOALS | 8.772 | 0.2476 | 0.6898 | 9.096 | 0.2441 | 0.6817 |
+| Serie A MATCH_RESULT | 13.122 | 0.1955 | 0.5777 | 27.960 | 0.1849 | 0.5545 |
+| Serie A TOTAL_GOALS | 8.748 | 0.2483 | 0.6918 | 9.080 | 0.2465 | 0.6869 |
+
+Brier e log loss migliorano leggermente su tutti e 4 i segmenti con più dati e
+refit più frequente — nella direzione attesa, non sorprendente. Hit rate
+MATCH_RESULT combinato scende leggermente (33.3%→31.0% EPL, 33.3%→30.6% Serie
+A): non è una regressione del modello, riflette le 4 stagioni più vecchie
+(2015/16–2018/19) ora incluse, probabilmente meno prevedibili o con dati
+quote di qualità inferiore — non ancora indagato nel dettaglio.
+
+Calibrazione nel bin più alto (0.9–1.0), lo stesso che mostrava overconfidence
+marcata sopra:
+
+| Segmento | n | Predetto (7d/10) | Osservato (7d/10) | Gap |
+|---|---|---|---|---|
+| EPL | 50 | 93.3% | 84.0% | +9.3 punti (era +21.2 punti con 21d/6 stagioni, n=42) |
+| Serie A | 38 | 93.0% | 73.7% | +19.3 punti |
+
+Il gap si dimezza per l'EPL con più dati, ma resta ampio per la Serie A — e
+in entrambi i casi n è piccolo (38-50), quindi parte del miglioramento
+potrebbe essere rumore campionario piuttosto che un effetto reale di
+più dati/refit più frequente. **Conclusione onesta**: la ricalibrazione dà un
+guadagno di precisione reale ma modesto (Brier/log loss), non risolve da sola
+il problema di overconfidence nelle code alte (v. anche calibrazione
+post-hoc, punto 3 di ROADMAP.md) — coerente con quanto già osservato per
+corner/cartellini: il problema non è principalmente la quantità di dati di
+allenamento.
 
 ## Corner e cartellini — RISULTATI REALI (`app/backtest/count_market_runner.py`)
 
