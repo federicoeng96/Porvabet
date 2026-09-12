@@ -77,3 +77,9 @@ completi — è un indice.
   di alias esplicita. Prima estrazione reale: 10.640 righe `TacticalFeature`
   (xG/PPDA/deep completions, EPL+Serie A 2023/24) — non ancora usate da
   nessun modello statistico.
+- `2e1d35b` — Aggiornato CHANGELOG.
+- `d475d63` — Roadmap item 6 (Intelligence Engine): costruito solo il
+  livello di **validazione** di un'ipotesi qualitativa contro dati
+  `TacticalFeature` reali (fail-conservative, mai un verdetto indovinato) —
+  nessuna fonte reale di segnali (news/LLM/manuale) esiste ancora, non
+  fabbricata. Nessuna nuova tabella DB (dataclass in memoria).
