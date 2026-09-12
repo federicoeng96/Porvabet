@@ -777,6 +777,45 @@ verificato per questi mercati in questa sessione (a differenza di
 sarebbe esattamente la "fonte dati inventata" che questo progetto evita;
 serve verifica live prima di aggiungerli (v. `RUNNING_LOCALLY.md`).
 
+**Indagine approfondita su corner/cartellini, esito: non verificabile da
+questa sandbox, non solo "non ancora fatto".** Richiesta esplicita
+dell'utente di verificare se Betfair Exchange offra davvero mercati corner/
+cartellini per il calcio. Due percorsi tentati, entrambi esauriti:
+1. **Documentazione ufficiale Betfair**: `docs.developer.betfair.com` e
+   `developer.betfair.com` restituiscono **entrambi lo stesso `HTTP 403`
+   Cloudflare "Restricted"** già trovato per `identitysso.betfair.it` (v.
+   sopra) — il blocco di rete di questa sandbox copre **l'intero dominio
+   betfair.com**, non solo gli endpoint di login/Betting API. Non è quindi
+   possibile leggere la pagina ufficiale dei market type per calcio da qui,
+   con nessuna combinazione di credenziali (il blocco è sull'IP, non
+   sull'autenticazione).
+2. **Libreria `betfairlightweight` installata**: nessun elenco/costante dei
+   market type code esiste nel pacchetto (`filters.py` accetta
+   `market_type_codes: list` generico, con solo `"e.g. MATCH_ODDS"` come
+   esempio in docstring — non un catalogo). **Trovato però un indizio reale
+   e non banale**: `resources/inplayserviceresources.py` (il modello dati
+   del vero In-Play Service di Betfair, un feed statistiche live separato
+   dalla Betting API) ha campi nativi `numberOfCorners`,
+   `numberOfCornersFirstHalf`, `numberOfCornersSecondHalf`,
+   `numberOfYellowCards`, `numberOfRedCards`, `numberOfCards` — Betfair
+   traccia quindi corner/cartellini come statistiche live strutturate, il
+   che rende plausibile che esistano anche mercati exchange dedicati (o
+   quantomeno che l'infrastruttura per settlement esista) — **ma questo è
+   un indizio circostanziale, non la conferma di un market type code
+   specifico per il mercato exchange corner/cartellini**, e non deve essere
+   letto come tale.
+- **Conclusione, per istruzione esplicita dell'utente**: non essendo
+  verificabile né in un modo né nell'altro da questa sessione, corner/
+  cartellini restano **sempre "n/d"** (probabilità del modello mostrata,
+  Value/Alert non calcolabili) — stesso trattamento già in uso per
+  CORNERS/CARDS ovunque nel Decision Layer (v. `_build_candidates_and_predictions`/
+  `count_market_estimates.py`), nessuna modifica di codice necessaria per
+  applicare questa decisione. Se in futuro un test dal vivo (v.
+  `RUNNING_LOCALLY.md`, da un IP non bloccato) conferma un market type code
+  reale per questi mercati, va aggiunto a `BetfairExchangeOddsProvider` con
+  lo stesso standard di `MATCH_ODDS`/`OVER_UNDER_25` (mai un codice
+  indovinato).
+
 **3. Libreria Python**: usata `betfairlightweight` (reale, repo attivo su
 GitHub sotto l'organizzazione `betcode-org`, installata e verificata in
 questo ambiente) invece di costruire un client HTTP/JSON-RPC da zero, come

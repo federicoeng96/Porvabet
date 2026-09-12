@@ -342,8 +342,12 @@ interfacce, senza refactoring del pre-match.
   `MarketOutcome` al volo se non esistono ancora (necessario per una
   partita futura senza quote storiche). `BetfairExchangeOddsProvider` ora
   interroga sia `MATCH_ODDS` (1X2) sia `OVER_UNDER_25` (O/U 2.5 gol, non
-  solo 1X2 come prima); corner/cartellini restano non implementati (nessun
-  market type Betfair verificato per questi mercati). Aggiunti anche: fix
+  solo 1X2 come prima); corner/cartellini restano non implementati —
+  indagine approfondita in una sessione successiva (v. sotto) ha confermato
+  che non è verificabile da questa sandbox nemmeno leggendo la
+  documentazione ufficiale (blocco di rete su tutto il dominio betfair.com,
+  non solo login/Betting API), quindi restano "n/d" per decisione esplicita
+  dell'utente, non per pigrizia. Aggiunti anche: fix
   di un bug reale trovato leggendo il sorgente di `betfairlightweight`
   (`client.login()` è l'endpoint cert-based, non quello interattivo — va
   usato `client.login_interactive()`), locale `"italy"` per l'endpoint
@@ -431,3 +435,19 @@ interfacce, senza refactoring del pre-match.
   l'utente registra una chiave gratuita su football-data.org e la imposta
   in `.env`, poi `python scripts/ingest_upcoming_fixtures.py` popola
   davvero la prossima giornata.
+- ✅ **Copertura Betfair corner/cartellini: indagata a fondo, esito onesto
+  "non verificabile da qui", non "non ancora fatto".** Richiesta esplicita:
+  verificare se Betfair Exchange offra davvero mercati corner/cartellini
+  per il calcio. Due percorsi tentati: (1) `docs.developer.betfair.com` e
+  `developer.betfair.com` restituiscono lo stesso blocco Cloudflare
+  "Restricted" già trovato per il login — **il blocco copre l'intero
+  dominio betfair.com**, non solo login/Betting API (scoperta più ampia di
+  quanto documentato finora); (2) `betfairlightweight` non ha un catalogo
+  di market type code, ma il suo modello dati del vero In-Play Service
+  (`numberOfCorners`/`numberOfYellowCards`/`numberOfRedCards`, ecc.) mostra
+  che Betfair traccia queste statistiche live — indizio reale ma
+  circostanziale, non una conferma di un market type per l'exchange. Per
+  istruzione esplicita dell'utente: senza verifica possibile, corner/
+  cartellini restano sempre "n/d" — già il comportamento corrente, nessuna
+  modifica di codice richiesta. V. `DATA_SOURCES.md` per il dettaglio
+  completo.
