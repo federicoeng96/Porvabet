@@ -126,14 +126,37 @@ Il mercato falli (dati già ingeriti, `TeamMatchStats.fouls_committed`) non
 ha ancora un modello/mercato dedicato — i falli non sono tipicamente un
 mercato scommesse standalone come corner/cartellini, priorità bassa.
 
-### 5. Feature tattiche misurabili (Matchup Engine)
+### 5. ⚠️ Feature tattiche misurabili (Matchup Engine) — bloccato su entrambe le fonti candidate, verificato in questa sessione
 Il data model (`TacticalFeature`) e la lista di feature del brief
 (crosses_per_90, PPDA, progressive_passes, ecc.) sono già previsti nello
-schema; l'estrazione reale richiede fbref/understat/StatsBomb (per validazione
-metodologica) collegati con join corretto sul nome squadra/giocatore — oggi
-`canonicalize_team_name` fa solo una normalizzazione lessicale semplice, non
-una vera risoluzione di entità cross-provider (da rafforzare quando si
-aggiunge una seconda fonte oltre a football-data.co.uk).
+schema. Le due fonti candidate per l'estrazione reale sono state **testate
+con rete reale in questa sessione, per la prima volta** (i loro provider
+erano scritti ma mai eseguiti contro il sito vero — i rispettivi docstring lo
+segnalavano esplicitamente):
+- **understat.com**: il sito risponde (200), ma la sua struttura interna è
+  cambiata — la pagina non incorpora più i dati come JSON in uno `<script>`
+  (`UnderstatProvider.parse_dates_data` cerca `var datesData = JSON.parse(...)`,
+  non più presente); il sito ora carica i dati via JavaScript lato client
+  dopo il caricamento. Il parser attuale **non funziona**.
+- **fbref.com**: bloccato da Cloudflare (403, sfida JavaScript anti-bot)
+  prima ancora di arrivare al contenuto — il limite di 10 richieste/minuto
+  dichiarato da fbref non è il problema, è un blocco a monte.
+- **StatsBomb Open Data**: già verificato e già escluso in DATA_SOURCES.md —
+  copre solo stagioni storiche isolate (2015/16 e più vecchie), non la
+  stagione corrente, quindi utile solo per validazione metodologica futura,
+  mai come feed reale.
+
+**Nessuna fonte candidata produce oggi dati tattici reali estraibili senza
+altro lavoro.** Sbloccare understat richiederebbe reverse-engineering del suo
+nuovo meccanismo di caricamento dati (endpoint interno non documentato,
+lavoro non banale e fragile). Sbloccare fbref richiederebbe un browser reale
+(es. Playwright) per superare la sfida Cloudflare — una scelta tecnica più
+pesante e più vicina al confine dell'elusione di anti-bot, che **non è stata
+presa autonomamente**: richiede una decisione esplicita dell'utente su se e
+come procedere. Fino ad allora, l'entity-resolution cross-provider
+(`canonicalize_team_name`, oggi solo normalizzazione lessicale semplice) resta
+un rafforzamento prematuro — non ha senso costruirla prima di avere una
+seconda fonte reale da collegare.
 
 ### 6. Intelligence Engine
 Interfaccia predisposta (`app/engine/intelligence/`, oggi vuota) — deve

@@ -96,27 +96,46 @@ e `app/ingestion/source_registry.py`):
 ### understat.com
 - **Cosa offre**: dati xG/xA per team e partita, Premier League e Serie A dal
   2014/15 (confermato: copre "big 5 + Russia").
-- **Come**: nessuna API pubblica — i dati sono incorporati come JSON dentro
-  `<script>` nelle pagine (`var datesData = JSON.parse('...')`), con encoding
-  esadecimale/unicode da decodificare (tecnica standard, usata da più scraper
-  open-source indipendenti).
-- **Confidenza**: medio-alta — pattern confermato da più tool indipendenti, ma
-  non verificato con un fetch diretto in questa sessione; gli internals della
-  pagina possono cambiare senza preavviso.
-- **Stato nel codice**: implementato (`UnderstatProvider.parse_dates_data` +
-  `get_historical_matches`); il metodo per lo xG per-team/per-partita è dichiarato
-  ma non ancora implementato (v. ROADMAP.md).
+- **⚠️ Verificato direttamente in questa sessione (rete reale) — il parser
+  attuale è rotto.** `GET https://understat.com/league/EPL/2023` risponde
+  `200` con HTML reale (non bloccato), ma la pagina **non contiene più** la
+  variabile `var datesData = JSON.parse('...')` che `UnderstatProvider.
+  parse_dates_data` cerca: l'HTML scaricato è ~18KB, senza alcun nome squadra
+  o dato di partita al suo interno, e termina caricando `js/league.min.js` —
+  il sito è stato evidentemente **ridisegnato** per costruire la pagina via
+  JavaScript lato client (probabilmente un fetch a un endpoint interno dopo il
+  caricamento) invece di incorporare i dati direttamente nell'HTML come
+  quando questo provider fu scritto. Il docstring del provider aveva già
+  segnalato esplicitamente questo rischio ("gli internals della pagina
+  possono cambiare senza preavviso, va verificato con un fetch reale prima di
+  usarlo in produzione") — ora verificato, e il rischio si è concretizzato.
+  **Non utilizzabile allo stato attuale** senza reverse-engineering del nuovo
+  endpoint interno del sito (lavoro non ancora fatto, non banale, e a rischio
+  di richiedere di nuovo aggiornamenti ad ogni ridisegno del sito).
+- **Stato nel codice**: `UnderstatProvider.parse_dates_data`/
+  `get_historical_matches` esistono ma **falliscono** contro il sito reale
+  (`ValueError: Could not locate 'datesData'...`) — non rimossi (restano
+  corretti per la struttura di pagina che il sito aveva quando furono
+  scritti, utile come riferimento), ma non funzionanti oggi.
 
 ### fbref.com
 - **Cosa offre**: statistiche avanzate squadra/giocatore (tiri, passaggi, azioni
   difensive, metriche per-90).
-- **Limite dichiarato**: 10 richieste/minuto sulla famiglia Sports-Reference/Stathead
-  per questo sito specifico (oltre: blocco temporaneo). Confermato da più fonti
-  (non da un fetch diretto della pagina `bot-traffic.html` in questa sessione —
-  confidenza medio-alta, non verbatim).
-- **Stato nel codice**: implementato (`FbrefProvider.fetch_table`) con
-  `app/core/rate_limiter.py` (10 richieste/60s) e gestione delle tabelle che fbref
-  incorpora dentro commenti HTML (necessario per farle leggere da `pandas.read_html`).
+- **⚠️ Verificato direttamente in questa sessione (rete reale) — bloccato da
+  Cloudflare.** `GET https://fbref.com/en/comps/9/Premier-League-Stats`
+  risponde `403` con una pagina "Just a moment..." (la sfida
+  JavaScript/challenge anti-bot di Cloudflare), non con i dati richiesti. Il
+  limite di 10 richieste/minuto dichiarato da fbref è irrilevante qui: il
+  blocco avviene prima, a livello di rilevamento bot generico (nessuna
+  richiesta arriva mai al contenuto). Superare una sfida Cloudflare
+  richiederebbe un browser reale (es. Playwright) che esegue JavaScript — una
+  scelta tecnica più pesante e più vicina al confine dell'elusione di
+  anti-bot, che **non è stata presa autonomamente** in questa sessione:
+  richiede una decisione esplicita (v. ROADMAP.md punto 5).
+- **Stato nel codice**: `FbrefProvider.fetch_table` esiste (con
+  `app/core/rate_limiter.py` e la gestione delle tabelle dentro commenti
+  HTML) ma **non funziona** contro il sito reale allo stato attuale — il
+  problema non è il parsing, è che nessuna risposta valida arriva mai.
 
 ### StatsBomb Open Data
 - **Cosa offre**: dati event-level molto dettagliati, gratuiti, nessuna chiave.
