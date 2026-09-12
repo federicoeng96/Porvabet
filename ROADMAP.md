@@ -353,3 +353,48 @@ interfacce, senza refactoring del pre-match.
   tentativo contro l'API live**: non ci sono credenziali da usare finché
   l'utente non completa la registrazione. Prossimo passo non ancora
   eseguibile, in attesa.
+- ⚠️ **Scaffolding frontend (colonne Probabilità/Quota Modello senza quota
+  reale) — fermato prima di implementare, ambiguità architetturale reale
+  trovata investigando, non solo un'attività rimandata.** L'idea proposta
+  ("la tabella mostra già probabilità e quota modello, che non dipendono da
+  Betfair") è vera per le partite già giocate — ma **verificato nel codice**
+  che `_build_candidates_and_predictions` (in `analysis_runner.py`) salta
+  del tutto un mercato quando non esiste una riga `OddsQuote` reale per quel
+  market outcome (`if odds_quote is None: continue`) — non produce **mai**
+  un `Candidate` con solo probabilità/quota-fair e senza quota bookmaker.
+  `RiskFactors.bookmaker_odds` è un campo obbligatorio (non opzionale) usato
+  direttamente nel calcolo del risk score (`odds_magnitude`, 10% del peso),
+  e `expected_value()`/`discrepancy_pct()` in `value.py` richiedono entrambi
+  una quota reale come parametro obbligatorio. In pratica: **per una
+  partita futura senza alcuna quota ingerita, il motore oggi non produce
+  nessuna riga in tabella, punto — non "una riga con quota vuota"**, perché
+  l'intero concetto di `Candidate`/`RiskSelection` in questo progetto è
+  "valuta il rischio di questa scommessa contro questo prezzo di mercato
+  reale", non "mostra una stima anche senza prezzo".
+
+  **Secondo blocco, indipendente dal primo e verificato con una query
+  diretta sul DB reale**: oggi **non esiste alcuna partita futura non
+  ancora giocata** nei dati reali ingeriti (`7.600` partite totali, `0` con
+  kickoff futuro, `0` senza risultato). football-data.co.uk pubblica solo
+  CSV storici di round già giocati — non è mai stata una fonte di
+  calendario/fixture future, e nessun'altra fonte è stata collegata per
+  quello scopo in questo progetto. Quindi anche risolvendo il primo blocco
+  (Candidate senza quota), oggi non ci sarebbe comunque nessuna partita
+  futura reale da mostrare in tabella — servirebbe anche ingerire un
+  calendario di fixture future da qualche fonte (es. API-Football, già
+  categoria A e già implementata per altri usi, supporta fixture — non
+  verificato in questo turno se già usata per questo scopo).
+
+  Costruire quanto chiesto richiederebbe una vera decisione di design, non
+  un placeholder di UI: o (a) rendere `bookmaker_odds`/value/alert
+  opzionali dentro `Candidate`/`RiskFactors` e adattare il calcolo del risk
+  score per il caso "nessuna quota" (cosa conta come rischio senza un
+  prezzo di mercato da valutare?), oppure (b) introdurre un tipo di riga
+  separato e più semplice ("stima di modello, nessun mercato quotato") per
+  le partite future senza quote, distinto dal `Candidate`/risk-ladder
+  esistente — una scelta con implicazioni non banali sul resto del layer
+  di decisione già testato e verificato. **Non presa autonomamente in
+  questo turno**: implementarla "al volo" senza una decisione esplicita
+  rischierebbe di alterare silenziosamente un concetto (`RiskFactors`) che
+  tutto il motore già testato assume completo. Segnalato invece di forzare
+  una soluzione rapida.
