@@ -105,8 +105,10 @@ la legittimità della fonte in sé.
 
 L'interfaccia `LineupProvider` (`app/providers/base/lineup_provider.py`) è già
 usata da `SosFantaLineupProvider`/`GazzettaLineupProvider` (probabili
-formazioni, entrambi stub non implementati). **Nessuna classe FantaLab è
-stata aggiunta**: l'audit tecnico (v. `DATA_SOURCES.md`) ha trovato che i dati
+formazioni, entrambi stub non implementati, confermati categoria C con
+motivo concreto — v. sezione dedicata sotto) e ora anche da
+`CorriereDelloSportLineupProvider` (implementazione reale, v. sotto).
+**Nessuna classe FantaLab è stata aggiunta**: l'audit tecnico (v. `DATA_SOURCES.md`) ha trovato che i dati
 reali (moduli, titolari, tiratori di rigori/punizioni — da collegare in
 futuro al modulo palle inattive esistente, v. MODEL_SPEC.md set-piece —
 ballottaggi, focus allenatori Premium) risiedono dietro un Firebase Realtime
@@ -118,6 +120,26 @@ oltre a una decisione esplicita dell'utente sul rischio verso il proprio
 account (categoria di rischio distinta, mai stata necessaria finora in questo
 progetto). Nessuna implementazione è stata tentata; l'audit è stato segnalato
 invece di essere risolto unilateralmente.
+
+## CorriereDelloSportLineupProvider — reale, testato, non ancora collegato all'analisi live
+
+`app/providers/corriere_dello_sport/provider.py` è un `LineupProvider` reale
+(categoria B, Serie A) che legge `GET /probabili-formazioni/calcio/serie-a`
+(HTML server-renderizzato, dati Opta, verificato dal vivo — v.
+DATA_SOURCES.md) e restituisce il modulo tattico per squadra una volta che
+la fonte lo ha annunciato — mai un placeholder prima di allora. **Limite
+esplicito nel design**: `player_names_starting` è sempre `[]` — questa fonte
+non espone nomi di giocatori, solo il modulo, quindi non deve essere trattata
+come fonte per probabili titolari/tiratori/ballottaggi a livello di singolo
+giocatore (v. docstring del modulo e DATA_SOURCES.md per il perché nessun'altra
+fonte auditata in questa sessione copre quel livello di dettaglio in modo
+affidabile). Come `SosFantaLineupProvider`/`GazzettaLineupProvider`, questo
+provider non è ancora collegato a `run_analysis_for_match` — l'interfaccia
+`LineupProvider` non è consumata da nessun punto dell'engine live in questo
+progetto (la logica di riconciliazione in
+`app/engine/decision/lineup_reconciliation.py` esiste ed è testata, ma non è
+ancora chiamata da nessun runner) — collegarla è un passo successivo, non
+fatto in questo turno perché non esplicitamente richiesto.
 
 ## Principio cardine: separazione Provider → Ingestion → Engine → API
 

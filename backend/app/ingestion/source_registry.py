@@ -119,14 +119,21 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         name="SOS Fanta (probable lineups)",
         category=DataSourceCategory.C_ABSTRACT_ONLY,
         is_implemented=False,
-        notes="ToS/endpoints not verified in this project; interface only.",
+        notes="Verified this session: RCS Mediagroup network affiliate (Gazzanet), own "
+        "footer confirms it; lineup content is free-text prose (rotations/doubts "
+        "narrative), not structured fields. Not pursued — same corporate-network risk "
+        "as Gazzetta plus unreliable-to-parse content. See DATA_SOURCES.md.",
     ),
     SourceDefinition(
         key="gazzetta_dello_sport",
         name="Gazzetta dello Sport (probable lineups)",
         category=DataSourceCategory.C_ABSTRACT_ONLY,
         is_implemented=False,
-        notes="ToS/endpoints not verified in this project; interface only.",
+        notes="Verified this session (not just unverified-C as before): RCS Mediagroup's "
+        "own Data Mining Policy page explicitly reserves TDM/scraping rights under "
+        "art. 70-quater, no personal-use exception — same absolute-prohibition "
+        "treatment as diretta.it/Flashscore. New use case (tactics vs. player props) "
+        "does not reopen this source. See DATA_SOURCES.md.",
     ),
     SourceDefinition(
         key="eplay24",
@@ -192,5 +199,52 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         "reachable only via a Cognito login with no visible bridge to Firebase "
         "auth. The user declined to authorize automating their own Premium login "
         "given the account-suspension risk. See DATA_SOURCES.md.",
+    ),
+    SourceDefinition(
+        key="corriere_dello_sport",
+        name="Corriere dello Sport — Probabili Formazioni (Serie A, tactical formation only)",
+        category=DataSourceCategory.B_PERSONAL_USE_ONLY,
+        is_implemented=True,
+        notes="Verified this session: real server-rendered Opta-sourced formation widget, "
+        "robots.txt permissive, no TDM/scraping clause in main ToS (unlike RCS's "
+        "Gazzetta), llms.txt explicitly authorizes informational/discovery use "
+        "(prohibits only bulk extraction/commercial redistribution/model training). "
+        "Formation shape only — never player names (none found in structured form on "
+        "this source); player_names_starting is always []. Serie A only, no Premier "
+        "League equivalent page found.",
+    ),
+    SourceDefinition(
+        key="sky_sport_it",
+        name="Sky Sport Italia (sport.sky.it)",
+        category=DataSourceCategory.C_ABSTRACT_ONLY,
+        is_implemented=False,
+        notes="Technically blocked, verified live: every request (homepage included) "
+        "returns an Akamai edge error page (HTTP 200 body 'This page can't be "
+        "displayed', server-timing: ak_p) — same class of block as ePlay24/fbref, "
+        "not a ToS decision.",
+    ),
+    SourceDefinition(
+        key="bbc_sport",
+        name="BBC Sport (Premier League team news)",
+        category=DataSourceCategory.C_ABSTRACT_ONLY,
+        is_implemented=False,
+        notes="Verified live: robots.txt itself states in plain English 'No scraping, "
+        "crawling, or systematic extraction... No text and data mining (TDM) under "
+        "Article 4 of the EU Directive... The BBC reserves all rights... and "
+        "expressly opts out of any statutory exceptions'. Most explicit prohibition "
+        "found in this project, no personal-use ambiguity at all.",
+    ),
+    SourceDefinition(
+        key="sky_sports_uk",
+        name="Sky Sports UK (Premier League team news)",
+        category=DataSourceCategory.C_ABSTRACT_ONLY,
+        is_implemented=False,
+        notes="Not pursued: no structured predicted-lineup page/widget found (team "
+        "news appears embedded as prose in preview articles, not extracted "
+        "structured fields); skysports.com's own specific ToS page was not located "
+        "(the linked sky.com terms are unrelated broadcast T&Cs). Documented "
+        "honestly as insufficiently verified/structured rather than forcing a "
+        "fragile prose parser. No equivalent Premier League source found matching "
+        "Corriere dello Sport's Serie A quality in this session.",
     ),
 ]

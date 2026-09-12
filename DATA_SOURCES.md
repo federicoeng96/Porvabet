@@ -724,16 +724,145 @@ discussione la legittimità della fonte in sé. FantaLab resta quindi
 differenza delle altre fonti categoria C di questo documento.
 
 
-### SOS Fanta / Gazzetta dello Sport (probabili formazioni)
-- Non fanno parte dell'elenco di fonti analizzate a fondo in questo progetto (il
-  brief le nomina come fonti attese per le probabili formazioni di Serie A, ma non
-  come parte dell'elenco da verificare tecnicamente). **ToS ed endpoint non
-  verificati** — implementarli "a naso" violerebbe lo stesso principio di
-  WhoScored/SofaScore. `SosFantaLineupProvider` / `GazzettaLineupProvider` sono
-  solo interfacce (`is_available()` → `False`), con la logica di riconciliazione
-  (accordo/conflitto tra fonti → confidence) già implementata e testata in
-  `app/engine/decision/lineup_reconciliation.py`, pronta per quando (e se) una di
-  queste fonti verrà verificata e collegata.
+### Moduli/tattica/formazioni da fonti editoriali — Serie A + Premier League
+
+**Riaudit completo in questa sessione** (il blocco precedente per SOS Fanta e
+Gazzetta era etichettato solo "ToS ed endpoint non verificati" — un'assenza di
+verifica, non un divieto ToS accertato — quindi riaprire l'analisi con il
+nuovo scopo (moduli/tattica invece di probabili formazioni player-level) era
+legittimo, non un modo per aggirare un vincolo già noto. Il riaudit ha però
+**confermato categoria C per Gazzetta con una motivazione nuova e concreta**,
+non l'ha declassata.)
+
+#### Gazzetta dello Sport — confermata CATEGORIA C, motivo nuovo trovato
+
+Verificato dal vivo: la pagina di ogni articolo (es.
+`/calcio/fantanews/.../genoa-frosinone-formazioni-ufficiali-tutti-i-titolari.shtml`)
+contiene davvero le formazioni in formato strutturato e affidabile
+(`"genoa (3-5-2) — Bijlow; Marcandalli, Ostigard, Vasquez; ...; Colombo,
+Osmajic. Allenatore: De Rossi"` — convenzione giornalistica italiana
+rigida, regex-parsabile), ma il footer del sito linka una
+**`Data Mining Policy`** (`https://www.gazzetta.it/data_mining_policy.shtml`,
+fetch reale) che recita:
+
+> "L'estrazione di testo e dati dal sito web o dai servizi... è espressamente
+> riservata a RCS Mediagroup s.p.a. ai sensi dell'art. 70-quater l. 633/1941...
+> senza il preventivo consenso scritto... l'utente o terzi non potranno...
+> utilizzare alcuno strumento... (tra cui... robot, spider, script...) per
+> estrarre, conservare, copiare, trattare... o per effettuare raccolta
+> massiva (ad esempio mediante strumenti di 'web/data scraping')... o
+> altrimenti... accedere o raccogliere contenuti... utilizzando mezzi
+> automatici (tra cui... bot, crawlers), salvo che per finalità di
+> indicizzazione delle pagine del sito web su motori di ricerca... con
+> esclusione di ogni altra utilizzazione."
+
+Questa è l'esplicita clausola di opt-out del text-and-data-mining prevista
+dall'art. 4 della Direttiva UE 2019/790 (recepita in Italia come art. 70-quater
+l. 633/1941) — **nessuna eccezione per uso personale**, stesso livello di
+assolutezza della clausola di diretta.it/Flashscore. **Il cambio di caso
+d'uso (moduli/tattica invece di probabili formazioni player-level) non
+riapre questa fonte**: il divieto è generale e riguarda l'estrazione in sé,
+non uno scopo specifico. Gazzetta dello Sport resta categoria C, ora
+verificata con un motivo concreto invece che per assenza di verifica.
+
+#### SOS Fanta — non perseguita (affiliazione di rischio + contenuto non strutturato)
+
+Verificato dal vivo: il footer di sosfanta.com dichiara "SOS Fanta SRL...
+è affiliato al network Gazzanet di RCS Mediagroup S.p.a." (metadati del
+player video interni confermano `data-dailymotion-owner-value="rcs-gazzetta"`)
+— **una società legalmente distinta ma affiliata allo stesso gruppo
+editoriale di Gazzetta**, non un'omonimia casuale. Il contenuto stesso
+dell'articolo "probabili formazioni" verificato
+(`/news/como-parma-probabili-formazioni-.../`) è **prosa libera**
+("Occhio alle possibili rotazioni di Fabregas post-Champions League nel
+Como. In difesa è tutto apertissimo: Smolcic e Kaiki sono pronti se
+dovessero riposare Couto e Valle...") — non il formato strutturato
+"Squadra (modulo) — Titolare1, Titolare2..." di Gazzetta, quindi richiede
+interpretazione/NLP per essere estratto in modo affidabile, esattamente il
+caso in cui non forzare un parser fragile. Non perseguita per la somma di
+questi due motivi (non ho trovato la Data Mining Policy identica su
+sosfanta.com stesso, quindi non è un C dello stesso tipo di Gazzetta — è
+"non perseguita per rischio di affiliazione + dati inaffidabili").
+
+#### Sky Sport Italia — bloccato tecnicamente (non un motivo ToS)
+
+`https://sport.sky.it/` e `https://sport.sky.it/calcio` restituiscono
+entrambi `HTTP 200` ma con il corpo di una pagina di errore Akamai
+("This page can't be displayed... Contact support...", header
+`server-timing: ak_p` confermato) — stessa classe di blocco già vista per
+ePlay24/fbref (edge/WAF, non un contenuto reale). Non è stato quindi
+possibile verificare né la struttura né i ToS reali di questa fonte in
+questa sessione.
+
+#### Corriere dello Sport — **VIABILE, categoria B, implementata (solo modulo tattico, Serie A)**
+
+Verificato dal vivo, tutti e tre gli assi richiesti:
+- **robots.txt permissivo**: nessun disallow generale su `/calcio/` o
+  `/probabili-formazioni/`, nessuna esclusione di crawler AI per nome (a
+  differenza di Gazzetta/BBC/livescores.com).
+- **`llms.txt` esplicito** (`https://www.corrieredellosport.it/llms.txt`,
+  fetch reale) — un file volontario, machine-readable, che **autorizza
+  esplicitamente** "discovery, indexing guidance and informational
+  reference" alle pagine pubbliche del sito, richiedendo solo attribuzione,
+  e **vieta solo** "model training, dataset creation, commercial
+  redistribution, large-scale extraction or automated republication...
+  requires a separate commercial license" — nessuna di queste è il caso
+  d'uso di questo progetto (uso singolo, personale, non commerciale, lookup
+  puntuali per singola partita, mai bulk né ridistribuzione). Nessuna
+  clausola equivalente alla Data Mining Policy di Gazzetta trovata nei ToS
+  principali del sito (verificati dal vivo) — una differenza reale tra due
+  testate che altrimenti si potrebbero assumere equivalenti, non
+  un'assunzione.
+- **Struttura tecnica reale**: `GET /probabili-formazioni/calcio/serie-a`
+  restituisce HTML server-renderizzato (non un guscio SPA) con un blocco
+  per ogni partita della giornata, esplicitamente etichettato **"dati
+  OPTA"** nel testo della pagina, con classi CSS fisse
+  `ProbabiliFormazioni_teamName__*` / `ProbabiliFormazioni_teamFormation__*`
+  — il div del modulo è vuoto finché la fonte non lo conosce, popolato con
+  una stringa tipo `"4-3-3"` una volta annunciato. Verificato con 8 partite
+  reali della giornata odierna (12-14/09/2026).
+
+**Limite esplicito, non nascosto**: questa pagina **non espone mai nomi di
+giocatori**, solo il modulo tattico di squadra. `CorriereDelloSportLineupProvider`
+(`app/providers/corriere_dello_sport/provider.py`) restituisce quindi sempre
+`player_names_starting=[]` — **non copre probabili titolari, tiratori di
+rigori/punizioni, né ballottaggi a livello di singolo giocatore**. Nessuna
+fonte auditata in questa sessione (Gazzetta, SOS Fanta, Sky Sport Italia)
+si è rivelata utilizzabile per quel livello di dettaglio a un rischio
+accettabile E in forma strutturata affidabile — documentato onestamente
+come limite, non forzato con un parser di prosa fragile. Solo Serie A:
+nessuna pagina equivalente `/probabili-formazioni/calcio/premier-league`
+esiste su questo sito (verificato, `404`).
+
+#### Premier League — nessuna fonte equivalente trovata
+
+- **BBC Sport**: **CATEGORIA C, il divieto più esplicito trovato in questo
+  progetto.** Il `robots.txt` stesso (fetch reale, `bbc.com/robots.txt`)
+  dichiara in inglese semplice, come commento non normativo ma
+  programmatico: *"No scraping, crawling, or systematic extraction of
+  content... No text and data mining (TDM) under Article 4 of the EU
+  Directive on Copyright in the Digital Single Market... The BBC reserves
+  all rights in its content and expressly opts out of any statutory
+  exceptions in any jurisdiction for text and data mining."* Nessuna
+  ambiguità da interpretare, nessuna eccezione per uso personale.
+- **Sky Sports UK**: **non perseguita, onestamente per insufficiente
+  verifica/struttura, non per un blocco trovato.** `robots.txt` è permissivo
+  sulle sezioni calcio generali; non è stata però trovata una pagina/widget
+  con probabili formazioni strutturate equivalente a quella di Corriere
+  dello Sport — il "team news" sembra incorporato come prosa dentro gli
+  articoli di preview, non in campi strutturati estratti in questa sessione.
+  Non è stata inoltre individuata la pagina ToS specifica di skysports.com
+  (il link nel footer porta a termini di sky.com relativi al servizio
+  broadband/TV, non al sito sportivo). **Nessuna fonte equivalente per
+  qualità/rischio a Corriere dello Sport è stata trovata per la Premier
+  League in questa sessione** — documentato onestamente come limite, non
+  forzato.
+
+**Stato nel codice**: `CorriereDelloSportLineupProvider` è l'unico
+`LineupProvider` con dati reali in questo progetto (categoria B, Serie A,
+solo modulo tattico). `SosFantaLineupProvider`/`GazzettaLineupProvider`
+restano stub non implementati (categoria C, confermata con motivo concreto).
+Nessun provider Premier League aggiunto.
 
 ---
 
@@ -752,8 +881,12 @@ differenza delle altre fonti categoria C di questo documento.
 | understat.com | B | ✅ | Riclassificato da A: robots.txt disallow-all. Riparato (nuovo endpoint), flag richiesto |
 | WhoScored | B | ❌ | Flag di conferma richiesto, scraping non implementato |
 | SofaScore | B | ❌ | Flag di conferma richiesto, scraping non implementato |
-| SOS Fanta | C | ❌ | Solo interfaccia |
-| Gazzetta dello Sport | C | ❌ | Solo interfaccia |
+| SOS Fanta | C | ❌ | Affiliata RCS (Gazzanet) + contenuto prosa non strutturato — non perseguita |
+| Gazzetta dello Sport | C | ❌ | **Confermata con motivo concreto**: Data Mining Policy esplicita (art. 70-quater), no eccezione uso personale |
+| Corriere dello Sport (moduli, Serie A) | B | ✅ | Solo modulo tattico (mai nomi giocatori) — Opta, llms.txt permissivo, no clausola TDM |
+| Sky Sport Italia | C | ❌ | Bloccato tecnicamente (Akamai edge), non un motivo ToS |
+| BBC Sport (Premier League) | C | ❌ | Divieto più esplicito del progetto: robots.txt vieta scraping/TDM in inglese semplice |
+| Sky Sports UK (Premier League) | C | ❌ | Non perseguita — nessuna struttura equivalente trovata, ToS specifico non individuato |
 | ePlay24 | C | ❌ | Solo interfaccia — nessun accesso reale noto |
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
 | Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
