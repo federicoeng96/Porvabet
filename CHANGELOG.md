@@ -32,3 +32,9 @@ completi — è un indice.
   mostrato come 21 quando il codice usava 7) in BACKTEST_SPEC.md/ROADMAP.md.
   Aggiunto modulo di calibrazione post-hoc (Platt + isotonica) non ancora
   validato sui dati reali (prossimo commit).
+- `fee54c0` — Aggiornato CHANGELOG.
+- `45e6d63` — Platt/isotonica testate sugli 8 segmenti reali: nessuna delle
+  due migliora la calibrazione code alte in modo consistente → **nessuna
+  attivata in produzione**. Terzo tentativo indipendente (dopo NB e più
+  stagioni) con la stessa conclusione — rafforza l'ipotesi "feature mancanti"
+  sulla struttura media, non un problema di forma/calibrazione.
