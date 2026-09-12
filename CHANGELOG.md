@@ -117,3 +117,24 @@ completi — è un indice.
   automatizzato via browser (bloccato in questo ambiente) più un rischio
   verso l'account Premium dell'utente stesso — decisione lasciata
   esplicitamente all'utente, non presa autonomamente. Solo documentazione.
+- `e11bd1a` — FantaLab **accantonato su decisione esplicita dell'utente**:
+  rifiutata l'autorizzazione ad automatizzare il login Premium/Cognito.
+  Documentata la distinzione esplicita da chiarire nel tempo: qui il motivo
+  è rischio di autenticazione/account, non un divieto ToS come per le altre
+  fonti categoria C di questo documento (nessuna clausola ToS anti-scraping
+  è mai stata trovata per FantaLab). Solo documentazione.
+- `25e2359` — Riaudit fonti editoriali moduli/tattica (Serie A + Premier
+  League), verificato prima se il blocco precedente di SOS Fanta/Gazzetta
+  fosse per ToS o altro (era "non verificato", non un divieto) prima di
+  riaprirle. **Gazzetta dello Sport confermata categoria C con motivo
+  concreto nuovo**: Data Mining Policy esplicita di RCS Mediagroup
+  (art. 70-quater, opt-out TDM UE), nessuna eccezione uso personale — il
+  nuovo caso d'uso non riapre la fonte. SOS Fanta non perseguita (affiliata
+  RCS + prosa non strutturata). Sky Sport Italia bloccato tecnicamente
+  (Akamai). **Corriere dello Sport implementato** (`CorriereDelloSportLineupProvider`,
+  categoria B, Serie A): pagina Probabili Formazioni reale, dati Opta,
+  llms.txt esplicito che autorizza uso informativo — limite dichiarato,
+  solo modulo tattico, mai nomi giocatori. Premier League: nessuna fonte
+  equivalente trovata (BBC Sport divieto più esplicito del progetto, Sky
+  Sports UK non perseguita per assenza di struttura verificata) —
+  documentato onestamente invece di forzare un parser fragile.
