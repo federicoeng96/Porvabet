@@ -479,17 +479,148 @@ appartiene a un terzo con cui questo progetto non ha alcun rapporto** — due
 motivi indipendenti dalla ridistribuzione. Per questo diretta.it/Betson resta
 C anche sotto la lente "uso personale", non B.
 
-**Stato nel codice**: nessun `OddsProvider` per questa fonte è stato
-implementato o verrà implementato — come richiesto per la categoria C, solo
-questa documentazione. Il Value/Odds Engine continua a usare esclusivamente
-le quote storiche già disponibili da football-data.co.uk (v. sopra) — il
-"value" mostrato resta calcolato contro quella fonte, mai contro ePlay24 o
-Betson/diretta.it, reali o simulate.
-
 **Nota storica**: questa fonte era stata precedentemente "chiusa" in questo
 documento perché il gap dati (corner/cartellini/falli) non esisteva più,
 **senza alcun audit legale condotto allora** — quella chiusura è ora superata
 da questo audit completo, motivato dal nuovo caso d'uso (quote).
+
+#### Aggiornamento — override esplicito richiesto dall'utente (quote pre-match)
+
+L'utente, informato per intero del punto 4 sopra (categoria C, clausola
+assoluta senza eccezione per uso personale, quota di un terzo in licenza solo
+per la visualizzazione), **ha richiesto esplicitamente di procedere comunque**,
+con questi vincoli auto-imposti: solo quote pre-match indicative (mai
+live/in-play, anche se tecnicamente disponibili sulla stessa pagina), rate
+limiting ragionevole per non farsi bloccare l'IP, ed etichettatura ovunque
+(codice/log/UI) come **"Betson (via diretta.it)"**, mai genericamente
+"bookmaker" — perché la quota resta di un bookmaker terzo che diretta.it
+licenzia solo per la visualizzazione (punto 3 sopra), non un dato proprio di
+diretta.it.
+
+> **Override richiesto dall'utente in data odierna (12/09/2026), rischio
+> accettato consapevolmente nonostante l'assenza di eccezione per uso
+> personale nei ToS.** Questo è distinto, nel codice, da un rischio B
+> interpretato in favore dell'utente (WhoScored/SofaScore): qui non c'è
+> un'ambiguità da risolvere, c'è un divieto esplicito e assoluto
+> (clausola 2.10, "Unauthorized Interference", citata sopra) che l'utente ha
+> scelto consapevolmente di ignorare. `BetsonDirettaOddsProvider.LICENSE_RISK`
+> porta il valore `explicit_tos_prohibition_no_personal_use_exception_user_override`
+> — una stringa diversa da quella dei provider B, proprio per rendere questa
+> distinzione verificabile nel codice, non solo nella prosa.
+
+**Verifica tecnica reale del punto di accesso alle quote (questa sessione,
+richieste live, non da documentazione di terzi):**
+
+`GET https://www.diretta.it/partita/calcio/as-roma-zVqqL0ma/inter-Iw7eKK25/`
+(una partita Serie A reale) risponde `200`, ma l'HTML servito dal server **non
+contiene alcuna quota** — la tab "Quote pre-partita" (stringa UI confermata
+presente altrove sul sito: `"Quote pre-partita"`, `"Quote scommesse sportive"`)
+si popola solo dopo l'esecuzione del JS lato client. La pagina espone nel suo
+stesso script di configurazione inline l'URL base del feed proprietario
+(`"default_url":"https://global.flashscore.ninja"`,
+`"url":"https://400.flashscore.ninja"` — 400 è l'id di progetto "calcio" già
+visto in altri riferimenti della pagina), ma **nessuno schema di firma delle
+richieste a quel feed è documentato o deducibile in modo affidabile** da
+questa sola ispezione statica — ho verificato con richieste dirette che alcuni
+percorsi plausibili (`/x/feed/d_od_1_<eventId>...`) rispondono `404`: **non ho
+proseguito a indovinare ulteriori varianti**, perché sarebbe esattamente
+l'endpoint "inventato" che lo standard di qualità di questo progetto vieta.
+
+L'unica via verificabile per leggere quella tab è quindi un browser reale che
+esegua la pagina. È stato tentato con Playwright/Chromium (binario reale
+disponibile in questo ambiente), fallito per un motivo di infrastruttura di
+questa sessione, non per un blocco specifico di diretta.it: il proxy di rete
+di questo ambiente sandboxato azzera l'handshake TLS per **qualsiasi** host
+esterno raggiunto tramite un motore browser reale — verificato anche contro
+google.com e accounts.google.com, con la stessa identica firma di errore
+(`ws_closed_mid_exchange`, handshake interrotto a ~1.7KB inviati/39B ricevuti,
+sempre la stessa dimensione indipendentemente dall'host). Il file
+`/root/.ccr/README.md` di questo ambiente conferma che certe classi di
+traffico non sono supportate dal proxy e vanno segnalate, non aggirate — ho
+seguito quell'istruzione.
+
+**Conclusione pratica**: l'override è reale e autorizzato dall'utente, la
+quota esiste davvero e la UI che la mostra è stata confermata dal vivo, ma
+**nessun percorso di codice funzionante per recuperarla esiste in questa
+sessione**. `BetsonDirettaOddsProvider` (`app/providers/betson_diretta/`) è
+quindi implementato come uno stub onesto — stesso trattamento già riservato a
+fbref (bloccato da Cloudflare) ed ePlay24 (bloccato da Akamai): `is_available()`
+restituisce sempre `False`, il metodo di fetch solleva `NotImplementedError`
+con una spiegazione, mai quote finte o simulate. Chi completerà
+l'implementazione in futuro (in un ambiente dove un browser headless raggiunge
+davvero internet) dovrà usare un browser reale — non un endpoint feed
+indovinato — e leggere solo la tab pre-match.
+
+### livescore.com — backup per le quote pre-match (Betson/diretta.it)
+
+**Auditato da zero, indipendentemente da diretta.it/Flashscore, come richiesto
+esplicitamente** (gruppo societario diverso, non un mirror).
+
+**1. Verifica di identità societaria (confidenza alta, verificata dal vivo)**:
+il footer di `https://www.livescore.com/en/` (fetch reale) riporta
+`"© 1998-2026 LiveScore Limited"` — una società distinta da Livesport
+a.s./Flashscore (operatore di diretta.it). Il brand di scommesse proprio di
+LiveScore Limited, `LiveScoreBet` (`livescorebet.com`), compare direttamente
+nella configurazione client dell'app — diretta.it non ha un equivalente.
+
+**2. Accesso tecnico e robots.txt (verificati dal vivo)**:
+`https://www.livescore.com/` risponde `200` (redirect a `/en/`).
+`https://www.livescore.com/robots.txt`: `User-agent: *` → `Allow: /`,
+`Disallow: /api/`, `/*/news/*/s/`, `/serve/*` — permissivo sulle pagine
+normali, esplicito nel vietare l'accesso diretto a `/api/`. Il mirror "legacy"
+citato dal sito stesso (`https://www.livescores.com`, robots.txt verificato
+anch'esso) è più esplicito: oltre a `Disallow: /api/*`, vieta per nome una
+lista di crawler AI/dati (`ClaudeBot`, `GPTBot`, `Amazonbot`,
+`meta-externalagent`, `Baiduspider`, `AhrefsBot`, `SleepBot`) — nota
+particolarmente rilevante essendo `ClaudeBot` esplicitamente nominato: non
+identifica questa sessione (che non opera come quel crawler), ma è un segnale
+in più di quanto il sito consideri indesiderata l'estrazione automatica di
+massa.
+
+**3. Struttura tecnica delle quote (verificata dal vivo, risultato negativo
+concreto)**: le pagine partita di livescore.com sono Next.js **server-side
+rendered** — a differenza di diretta.it, la pagina di una partita reale
+(`https://www.livescore.com/en/football/italy/serie-a/atalanta-vs-cagliari/1785358/`,
+Atalanta-Cagliari, Serie A odierna) incorpora un blob JSON reale
+`__NEXT_DATA__` lato server con i dati della partita. **Le quote dei
+bookmaker, però, non sono in quel JSON**: la tab "Odds" della stessa
+configurazione mostra un sistema di widget esterni (`e2Widgets`:
+`odds-comparison`, `smart-odds`, `odds-boost`) con un cancello per
+paese/utente — `"user":["isAdult","notSelfExcluded","hasBetFeatures"]` — cioè
+livescore.com stesso tratta questa funzione come contenuto di scommessa
+regolamentato dietro consenso, non come un feed dati pubblico.
+`odds-comparison` risulta abilitato per `"IT"` nella configurazione live, ma
+**nessun nome di bookmaker (es. "bet365") o quota reale è mai stato
+osservato** in questa sessione: la tab "Odds" della partita di test verificata
+risultava `"isVisible": false` lato server.
+
+**4. ToS non recuperabile per intero**: `https://www.livescore.com/en/terms/`
+(e le varianti localizzate) servono solo un breve riassunto pre-hydration
+("has terms of use covering areas such as the use of LiveScore material...")
+senza clausola esplicita su scraping/automazione visibile in quel testo — il
+corpo completo carica lato client dopo l'hydration React, che (come per
+diretta.it) non è stato possibile eseguire in questa sessione per lo stesso
+blocco tecnico del browser headless (v. sopra).
+
+**5. Classificazione: CATEGORIA C, non implementata.** Non per la stessa
+ragione di diretta.it (qui non c'è una clausola ToS assoluta verificata), ma
+per somma di segnali concreti: funzione trattata come scommessa regolamentata
+dietro consenso, nessuna quota reale mai osservata, nessun testo ToS completo
+verificato, e lo stesso blocco tecnico del browser headless di questa sessione.
+Se il caso venisse ripreso in futuro, va prima recuperato il testo ToS
+completo e un esempio reale di quota renderizzata — entrambi richiedono un
+motore browser funzionante, non solo richieste HTTP dirette.
+
+**Stato nel codice**: `LivescoreOddsProvider` (`app/providers/livescore/`) è
+uno stub onesto — `is_available()` sempre `False`, fetch che solleva
+`NotImplementedError`. `FallbackOddsProvider`
+(`app/providers/base/odds_provider_chain.py`) implementa la logica di
+fallback richiesta dal brief — Betson/diretta.it come priorità di default
+(fonte primaria nominata esplicitamente dall'utente), livescore.com come
+backup (nominato esplicitamente come backup) — testata con provider finti,
+pronta per quando (e se) una delle due fonti reali verrà completata. Nessuna
+delle due fonti fornisce oggi quote reali al Value/Odds Engine, che continua
+a usare esclusivamente football-data.co.uk per le quote storiche.
 
 ### SOS Fanta / Gazzetta dello Sport (probabili formazioni)
 - Non fanno parte dell'elenco di fonti analizzate a fondo in questo progetto (il
@@ -523,4 +654,5 @@ da questo audit completo, motivato dal nuovo caso d'uso (quote).
 | Gazzetta dello Sport | C | ❌ | Solo interfaccia |
 | ePlay24 | C | ❌ | Solo interfaccia — nessun accesso reale noto |
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
-| diretta.it / Betson (quote) | C | ❌ | ToS vieta scraping esplicitamente + quota di terzi in licenza display-only |
+| Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
+| livescore.com (quote, backup) | C | ❌ | Auditata da zero; quote dietro widget affiliato gated, mai osservate dal vivo |

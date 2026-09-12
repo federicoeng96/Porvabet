@@ -284,3 +284,22 @@ interfacce, senza refactoring del pre-match.
   scommesse e ROADMAP.md lo trattava già come condizionale ("se servisse").
   Non implementato autonomamente: è esattamente il tipo di ambiguità che
   richiede una decisione esplicita, non un'assunzione.
+- ⚠️ **Rivalutazione colonna ALERT (Data/Ora | Partita | Risk | Selezione |
+  Quota | Probabilità | Quota Modello | Info | Value | 🚨) — ancora non
+  sbloccata.** Verificato in questa sessione dopo il tentativo di
+  implementare Betson (via diretta.it) e livescore.com come fonti di quote
+  pre-match reali per partite future (v. DATA_SOURCES.md, ARCHITECTURE.md):
+  **nessuna delle due fornisce oggi quote reali** — entrambe sono stub
+  verificati-bloccati (non "non ancora implementati per pigrizia"), per un
+  limite tecnico di questo ambiente (nessun browser headless funzionante
+  attraverso il proxy di rete di questa sessione) e, per livescore.com, anche
+  per la natura dei dati stessi (widget di quote gated dietro consenso,
+  bookmaker mai osservato dal vivo). Di conseguenza **la premessa del punto 3
+  del brief di questo turno non si è verificata**: non ci sono quote
+  pre-match reali disponibili per calcolare edge/value su partite future, e
+  la colonna ALERT resta nello stesso stato di prima — vuota/non popolabile
+  con dati reali per partite non ancora giocate, mai con dati finti. Se in
+  futuro uno dei due `OddsProvider` verrà davvero completato (richiede prima
+  che il limite del browser headless sia risolto — v. ARCHITECTURE.md), va
+  ripreso da qui: a quel punto costruire il frontend per la colonna ALERT
+  avrebbe un motivo concreto, cosa che oggi ancora non ha.

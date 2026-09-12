@@ -154,4 +154,27 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         notes="Own terms explicitly forbid data mining; official match data exclusively "
         "licensed to Genius Sports through 2028/29. Abstract interface only.",
     ),
+    SourceDefinition(
+        key="betson_diretta",
+        name="Betson (odds shown via diretta.it/Flashscore)",
+        category=DataSourceCategory.C_ABSTRACT_ONLY,
+        is_implemented=False,
+        notes="User-authorized explicit ToS override (LICENSE_RISK marks this distinctly "
+        "from B_PERSONAL_USE_ONLY sources) — pre-match odds only, never live/in-play. "
+        "Not implemented: odds render only after client JS runs, and this session's "
+        "sandboxed network cannot get a real browser engine to any external host "
+        "(verified against unrelated hosts too, not diretta.it-specific). See "
+        "DATA_SOURCES.md.",
+    ),
+    SourceDefinition(
+        key="livescore_com",
+        name="livescore.com (backup for Betson/diretta.it pre-match odds)",
+        category=DataSourceCategory.C_ABSTRACT_ONLY,
+        is_implemented=False,
+        notes="Audited independently — LiveScore Limited, a distinct corporate group from "
+        "Livesport/Flashscore. Real odds sit behind a country/user-gated affiliate "
+        "widget system (isAdult/notSelfExcluded/hasBetFeatures), never observed with "
+        "real bookmaker data in this session; full ToS text not retrievable via plain "
+        "HTTP. Not implemented. See DATA_SOURCES.md.",
+    ),
 ]

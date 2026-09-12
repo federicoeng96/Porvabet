@@ -22,17 +22,31 @@ propri termini di servizio restituiscono tutti HTTP 403, sia da rete diretta
 sia tramite `WebFetch`. Non esiste inoltre alcuna API pubblica o feed
 documentato, né un aggregatore di quote di terze parti che copra ePlay24.
 
-**Anche diretta.it/Flashscore (quote del bookmaker "Betson" mostrate sul
-sito) è stato valutato come possibile alternativa e scartato** (v.
-`DATA_SOURCES.md`, categoria C): tecnicamente raggiungibile (a differenza di
-ePlay24), ma i ToS vietano esplicitamente scraping/estrazione senza consenso,
-e la quota mostrata appartiene al bookmaker terzo licenziatario, non a
-diretta.it stesso — un doppio motivo di rischio, non solo un blocco tecnico.
+**Betson (via diretta.it) e livescore.com sono stati valutati come fonti di
+quote pre-match e restano entrambi non implementati, per motivi diversi** (v.
+`DATA_SOURCES.md`): Betson/diretta.it ha un override esplicito dell'utente sui
+ToS (categoria C, divieto assoluto, nessuna eccezione per uso personale), ma
+resta bloccato da un limite tecnico di questo ambiente (nessun browser
+headless funzionante attraverso il proxy di rete di questa sessione, verificato
+contro host arbitrari, non solo diretta.it) — le quote esistono e sono state
+confermate dal vivo, ma non c'è un percorso di codice funzionante per leggerle.
+livescore.com (auditato indipendentemente come backup, gruppo societario
+diverso) mostra le proprie quote solo dietro un sistema di widget
+affiliati con gate paese/utente (`isAdult`/`notSelfExcluded`/`hasBetFeatures`)
+mai osservato con dati reali in questa sessione. `FallbackOddsProvider`
+(`app/providers/base/odds_provider_chain.py`) implementa comunque la logica di
+fallback tra le due fonti (Betson/diretta.it priorità di default, livescore.com
+backup) in modo che, quando una delle due verrà davvero completata (in un
+ambiente capace di eseguire un browser reale), l'altra si inserisca senza
+modificare i chiamanti — oggi la catena non ha nulla di reale su cui fare
+fallback.
 
-Conseguenza architetturale: finché `EPlay24OddsProvider` resta
-un'interfaccia senza implementazione (v. `app/providers/eplay24/provider.py`),
-questo progetto è, di fatto, **un motore di stima (probabilità + quota fair),
-non un motore di value betting contro ePlay24 specificamente**. Il "value" e
+Conseguenza architetturale: finché `EPlay24OddsProvider`, `BetsonDirettaOddsProvider`
+e `LivescoreOddsProvider` restano interfacce senza implementazione funzionante
+(v. `app/providers/eplay24/`, `app/providers/betson_diretta/`,
+`app/providers/livescore/`), questo progetto è, di fatto, **un motore di stima
+(probabilità + quota fair), non un motore di value betting contro un book
+reale in tempo reale**. Il "value" e
 gli alert mostrati oggi nell'interfaccia sono sempre calcolati contro le
 quote della fonte realmente disponibile (football-data.co.uk — quote reali di
 altri bookmaker, mai simulate), e sono **etichettati esplicitamente con il nome
@@ -53,6 +67,30 @@ MODEL_SPEC.md) produce comunque una probabilità reale, esposta via API/
 frontend come stima esplicitamente "senza quota" (`additional_estimates`,
 mai nella risk ladder) — stesso principio del punto sopra: mostrare il lavoro
 di stima senza fingere un value che nessun prezzo di mercato reale supporta.
+
+## ⚠️ Limite d'ambiente: nessun browser headless funzionante in questa sessione
+
+Verificato empiricamente in questa sessione (non un'assunzione): il proxy di
+rete di questo ambiente sandboxato (`$HTTPS_PROXY`, v.
+`/root/.ccr/README.md`) azzera l'handshake TLS per qualsiasi host esterno
+raggiunto tramite un motore browser reale (Playwright/Chromium, il binario è
+installato e disponibile) — non un blocco specifico di un sito: verificato
+con la stessa identica firma di errore anche contro google.com e
+accounts.google.com. Richieste HTTP semplici (`httpx`/`curl`) attraverso lo
+stesso proxy funzionano normalmente — è solo l'handshake TLS del motore
+browser a fallire.
+
+Conseguenza pratica: ogni fonte dati la cui parte rilevante viene renderizzata
+solo lato client (richiede JS eseguito da un browser reale, non solo un fetch
+HTTP) **non è implementabile in questa sessione**, anche quando i ToS lo
+permetterebbero — non per scelta di prodotto, ma per questo limite di
+infrastruttura. Due casi reali di questa sessione: le quote pre-match di
+Betson (via diretta.it) e i moduli/titolari/ballottaggi di FantaLab (v.
+`DATA_SOURCES.md` per entrambi). Se in futuro questo limite viene rimosso
+(un ambiente/sessione dove Playwright raggiunge davvero internet), queste
+fonti vanno riverificate da capo prima di essere implementate — questo
+documento non deve essere trattato come prova che siano permanentemente
+irraggiungibili.
 
 ## Principio cardine: separazione Provider → Ingestion → Engine → API
 
