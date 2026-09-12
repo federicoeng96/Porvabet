@@ -47,6 +47,16 @@ evento — coerente con l'indicazione del brief.
   modello statistico li legge ancora**: Dixon-Coles resta basato solo sui
   gol. Sono la base dati per il futuro Matchup Engine (ROADMAP.md punto 5),
   non ancora una feature attiva in produzione.
+- **Intelligence Engine — solo il livello di validazione, non un generatore
+  di segnali**: `app/engine/intelligence/validation.py` confronta
+  un'ipotesi qualitativa (`IntelligenceSignal`, es. "pressing più aggressivo
+  da quando è arrivato il nuovo allenatore") con un cambiamento misurabile
+  reale in una `TacticalFeature` prima/dopo la data del segnale —
+  fail-conservative (nessun giudizio forzato sotto una soglia minima di
+  osservazioni). Nessuna fonte reale produce ancora un `IntelligenceSignal`
+  (nessun feed news, nessuna pipeline LLM, nessun inserimento manuale
+  collegato) — il layer quantitativo di validazione esiste ed è testato, il
+  layer qualitativo che dovrebbe alimentarlo no.
 
 ## Corner e cartellini: modello e limite strutturale sul value
 

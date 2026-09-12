@@ -68,6 +68,12 @@ riflette cosa è già fatto e cosa manca davvero).
     xG/PPDA reale eseguita, 10.640 righe `TacticalFeature` (v. punto 5 sotto).
     Aggiunta nota permanente "uso esclusivamente personale" in
     README.md/DATA_SOURCES.md.
+17. ✅ **Intelligence Engine — livello di validazione** (`app/engine/
+    intelligence/signals.py` + `validation.py`, v. punto 6 sotto per il
+    dettaglio): confronta un'ipotesi qualitativa con un cambiamento
+    misurabile reale nelle `TacticalFeature`, fail-conservative quando non
+    stimabile. Nessuna fonte reale di segnali ancora collegata — solo il
+    meccanismo di validazione, non il generatore.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
@@ -195,11 +201,30 @@ per tempo in questa sessione.
 - crosses_per_90/progressive_passes (non in understat, servirebbero fbref o
   un'altra fonte — bloccati dagli stessi motivi sopra).
 
-### 6. Intelligence Engine
-Interfaccia predisposta (`app/engine/intelligence/`, oggi vuota) — deve
-produrre segnali/feature qualitativi (tattica, allenatori, news) che il layer
-quantitativo valida con dati osservabili, mai probabilità dirette. Dipende dal
-punto 5 per avere feature misurabili su cui ancorare le ipotesi qualitative.
+### 6. ✅ Intelligence Engine — livello di validazione costruito, ancora senza una fonte di segnali reale
+`app/engine/intelligence/` non è più vuoto: `signals.py` definisce
+`IntelligenceSignal` (una ipotesi qualitativa su una squadra — soggetto,
+categoria, testo libero, data, fonte) e `validation.py` implementa
+`validate_tactical_shift_signal`, che confronta la media di una feature
+`TacticalFeature` reale (xG/PPDA/deep completions da understat, v. punto 5)
+in una finestra prima/dopo la data del segnale, e dice se il cambiamento
+supera una soglia — **mai indovinato**: sotto una soglia minima di
+osservazioni per finestra (3) o con media-prima pari a zero, ritorna
+esplicitamente "non stimabile" (`supported=None`), stesso pattern
+fail-conservative di `reliability.py`. Deliberatamente **non** interpreta la
+direzione attesa del cambiamento (es. "più pressing → PPDA più basso") — quella
+lettura resta di chi legge il testo del claim, non della funzione.
+
+**Cosa NON è stato costruito, esplicitamente**: nessuna fonte reale produce
+`IntelligenceSignal` oggi — non un feed news, non una pipeline di analisi
+LLM, non un'interfaccia di inserimento manuale. `IntelligenceSignal` è
+volutamente una dataclass in memoria, non una tabella persistita: persistere
+una forma mai esercitata da un vero produttore di segnali sarebbe uno schema
+DB indovinato, non progettato. Nessuna nuova migrazione Alembic in questo
+slice. Solo una categoria (`TACTICAL_SHIFT`) ha un percorso di validazione —
+`NEWS_EVENT`/cambio allenatore, menzionati nel brief, non hanno ancora un
+controllo a dati osservabili implementato, quindi non sono nemmeno elencati
+come categorie valide finché non ne esiste uno.
 
 ### 7. Player props
 Richiede: formazioni reali (probabile prima ufficiale, poi da fonti
