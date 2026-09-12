@@ -1,31 +1,53 @@
-"""Real SportsDataProvider for understat.com (DATA_SOURCES.md category A).
+"""SportsDataProvider for understat.com (DATA_SOURCES.md category B —
+**reclassified this session**, was previously A_UNRESTRICTED).
 
-understat.com has no public API; it embeds match/team/player xG data as
-JSON-encoded strings inside `<script>` tags on its league pages, e.g.:
+**Two real findings from this session, both from live network verification —
+neither assumed from documentation:**
 
-    https://understat.com/league/{league_slug}/{season_year}
+1. **The site's internal structure changed — fixed here.** This provider used
+   to look for `var datesData = JSON.parse('...')` embedded in the league
+   page's HTML (understat's old rendering approach). A live fetch in this
+   session showed that variable is gone from
+   `https://understat.com/league/{league}/{season}` — the page is now a thin
+   shell that loads `js/league.min.js`, which itself calls
+   `GET /getLeagueData/{league}/{season}` (relative to the league page) via
+   jQuery `$.ajax`, using the `PHPSESSID` cookie set by the initial page load
+   as its session. Verified end-to-end with real requests (EPL and Serie A,
+   2023 season): visiting the league page first, then calling
+   `getLeagueData/...` with a `Referer` header and the same cookie jar,
+   returns the full real dataset (`teams`, `dates`, `players` keys) — same
+   underlying data as before, different delivery mechanism. A single
+   `httpx.Client` with `follow_redirects=True` naturally persists the session
+   cookie across both calls, so `_fetch_league_data` below just does both
+   requests on one client.
 
-with a line such as `var datesData = JSON.parse('\\x7B...')`. The payload is a
-JavaScript string-escaped (hex/unicode-escaped) UTF-8 JSON document; the standard
-decode is: take the matched string, decode it as `unicode_escape`, re-encode as
-latin1 bytes, then decode those bytes as utf-8 (this two-step round trip is the
-documented approach used by every open-source understat scraper, since the page
-mixes literal `\\xHH` byte escapes with genuine UTF-8 multi-byte sequences).
+2. **`robots.txt` disallows everything — this provider is reclassified
+   A → B.** `https://understat.com/robots.txt` is `User-agent: *` /
+   `Disallow: /` — a full-site disallow, no exceptions, for any crawler. No
+   published Terms of Service was found for understat.com (extensive search)
+   giving a specific clause to point to, unlike WhoScored/SofaScore's named
+   betting-platform clauses — the risk here is the robots.txt directive
+   itself, which is why `LICENSE_RISK` below names a different reason.
+   Context, not a license to ignore it: understat is described by independent
+   sources as one of the last free sources of live xG data for these leagues,
+   and long-standing, actively-maintained open-source scrapers exist for it
+   (e.g. the `understatapi` PyPI package) with no observed pattern of active
+   enforcement (unlike fbref's Cloudflare challenge or ePlay24's edge block).
+   That context doesn't erase the robots.txt directive, so — same posture as
+   WhoScored/SofaScore — this class requires an explicit, non-default
+   acknowledgement to instantiate.
 
-This provider has not been exercised against the live site from within the current
-sandboxed session (network-restricted); the embedded-script variable names and
-encoding above are corroborated by multiple independent scraper implementations
-but should be spot-checked against a live page fetch before relying on this in
-production, since understat's page internals could drift without notice.
-
-Understat provides xG/xA context, not full match results with all bookmaker odds,
-so this provider is meant to be combined with football-data.co.uk (results/odds),
-matched on team name + date — not used as a standalone results source.
+`get_team_match_tactical_stats` is new in this session: the source for real
+`TacticalFeature` rows (ROADMAP.md item 5 — corners/cards market feature gaps
+aside, this is xG/PPDA/deep-completions data for the Matchup Engine), pulled
+from the same `getLeagueData` payload's per-team `history` arrays.
 """
 
+from __future__ import annotations
+
 import json
-import re
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -40,14 +62,55 @@ COMPETITION_TO_SLUG = {
     "SERIE_A": "Serie_A",
 }
 
-_SCRIPT_VAR_PATTERN = re.compile(r"var\s+datesData\s*=\s*JSON\.parse\('(.*?)'\);", re.DOTALL)
+
+class PersonalUseNotAcknowledgedError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class TeamMatchTacticalStats:
+    """One team's advanced stats for one match — a row here, resolved against
+    the matching `Match`/`Team` by (team_name, match_date), becomes one or more
+    `TacticalFeature` rows. Raw PPDA components (attacking/defensive event
+    counts) are kept rather than a single pre-divided ratio, so a caller can
+    decide how to aggregate across a rolling window without re-deriving them."""
+
+    team_name: str
+    match_date: date
+    is_home: bool
+    xg: float
+    xga: float
+    npxg: float
+    npxga: float
+    ppda_att: int
+    ppda_def: int
+    ppda_allowed_att: int
+    ppda_allowed_def: int
+    deep: int
+    deep_allowed: int
 
 
 class UnderstatProvider(SportsDataProvider):
     source_key = "understat"
-    category = DataSourceCategory.A_UNRESTRICTED
+    category = DataSourceCategory.B_PERSONAL_USE_ONLY
+    # Distinct from WhoScored/SofaScore's flag: the risk here is a full-site
+    # robots.txt disallow, not a specific betting-platform ToS clause (no
+    # published ToS was found at all) — see module docstring point 2.
+    LICENSE_RISK = "personal_use_only_robots_disallow_all"
 
-    def __init__(self, http_client: httpx.Client | None = None, timeout_s: float = 20.0) -> None:
+    def __init__(
+        self,
+        http_client: httpx.Client | None = None,
+        timeout_s: float = 20.0,
+        acknowledge_personal_use_only: bool = False,
+    ) -> None:
+        if not acknowledge_personal_use_only:
+            raise PersonalUseNotAcknowledgedError(
+                "UnderstatProvider requires acknowledge_personal_use_only=True. "
+                "understat.com's robots.txt disallows all automated access "
+                "(Disallow: / for User-agent: *) — see this module's docstring "
+                "and DATA_SOURCES.md before enabling it."
+            )
         self._client = http_client or httpx.Client(timeout=timeout_s, follow_redirects=True)
 
     def is_available(self) -> bool:
@@ -56,17 +119,9 @@ class UnderstatProvider(SportsDataProvider):
     def get_historical_matches(
         self, competition_code: str, season_label: str
     ) -> list[HistoricalMatchRecord]:
-        if competition_code not in COMPETITION_TO_SLUG:
-            raise ValueError(f"understat does not cover {competition_code!r}")
-        slug = COMPETITION_TO_SLUG[competition_code]
-        season_year = season_label.split("/")[0]
-        url = f"{BASE_URL}/league/{slug}/{season_year}"
-        response = self._client.get(url)
-        response.raise_for_status()
-        matches = self.parse_dates_data(response.text)
-
+        data = self._fetch_league_data(competition_code, season_label)
         records = []
-        for m in matches:
+        for m in data["dates"]:
             if not m.get("isResult"):
                 continue  # skip not-yet-played fixtures
             records.append(
@@ -87,17 +142,47 @@ class UnderstatProvider(SportsDataProvider):
             )
         return records
 
-    @staticmethod
-    def parse_dates_data(html: str) -> list[dict]:
-        match = _SCRIPT_VAR_PATTERN.search(html)
-        if not match:
-            raise ValueError("Could not locate 'datesData' script payload in understat HTML")
-        raw = match.group(1)
-        decoded = raw.encode("utf-8").decode("unicode_escape").encode("latin1").decode("utf8")
-        return json.loads(decoded)
+    def get_team_match_tactical_stats(
+        self, competition_code: str, season_label: str
+    ) -> list[TeamMatchTacticalStats]:
+        data = self._fetch_league_data(competition_code, season_label)
+        out = []
+        for team in data["teams"].values():
+            for h in team["history"]:
+                out.append(
+                    TeamMatchTacticalStats(
+                        team_name=team["title"],
+                        match_date=datetime.strptime(h["date"], "%Y-%m-%d %H:%M:%S")
+                        .replace(tzinfo=UTC)
+                        .date(),
+                        is_home=(h["h_a"] == "h"),
+                        xg=float(h["xG"]),
+                        xga=float(h["xGA"]),
+                        npxg=float(h["npxG"]),
+                        npxga=float(h["npxGA"]),
+                        ppda_att=int(h["ppda"]["att"]),
+                        ppda_def=int(h["ppda"]["def"]),
+                        ppda_allowed_att=int(h["ppda_allowed"]["att"]),
+                        ppda_allowed_def=int(h["ppda_allowed"]["def"]),
+                        deep=int(h["deep"]),
+                        deep_allowed=int(h["deep_allowed"]),
+                    )
+                )
+        return out
 
-    def get_team_xg(self, team_understat_id: str, season_year: str) -> dict:
-        """Fetch a team's per-match xG/xGA series, used as a feature input
-        (opponent-adjusted attack/defense strength) alongside raw goals.
-        Not wired into the vertical-slice ingestion yet — see ROADMAP.md."""
-        raise NotImplementedError("Team xG page parsing planned for a later phase (see ROADMAP.md)")
+    def _fetch_league_data(self, competition_code: str, season_label: str) -> dict:
+        if competition_code not in COMPETITION_TO_SLUG:
+            raise ValueError(f"understat does not cover {competition_code!r}")
+        slug = COMPETITION_TO_SLUG[competition_code]
+        season_year = season_label.split("/")[0]
+        league_url = f"{BASE_URL}/league/{slug}/{season_year}"
+        # Establishes the PHPSESSID cookie the AJAX endpoint below requires —
+        # see module docstring point 1. Response content itself isn't needed.
+        self._client.get(league_url)
+        data_url = f"{BASE_URL}/getLeagueData/{slug}/{season_year}"
+        response = self._client.get(
+            data_url,
+            headers={"Referer": league_url, "X-Requested-With": "XMLHttpRequest"},
+        )
+        response.raise_for_status()
+        return json.loads(response.text)

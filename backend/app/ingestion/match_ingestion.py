@@ -15,8 +15,8 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.core import Competition, Season, Team
-from app.models.enums import MarketCategory
+from app.models.core import Competition, Season, Source, Team
+from app.models.enums import DataSourceCategory, MarketCategory
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
@@ -40,6 +40,34 @@ def canonicalize_team_name(name: str) -> str:
     return text
 
 
+# Hand-verified against real data (this session, 2023/24 EPL+Serie A team
+# lists from both sources) — understat.com's full/official club name mapped
+# to the spelling football-data.co.uk uses (already ingested into `Team`).
+# Deliberately explicit and small rather than fuzzy-matched: these are
+# objective facts (the same club), not estimates, and the finite number of
+# top-flight clubs makes a hand-curated map both accurate and easy to extend
+# when a newly promoted/relegated club introduces another mismatch (fails
+# loud via `resolve_understat_team_name` below, rather than guessing).
+UNDERSTAT_TEAM_NAME_ALIASES: dict[str, str] = {
+    "Manchester City": "Man City",
+    "Manchester United": "Man United",
+    "Newcastle United": "Newcastle",
+    "Nottingham Forest": "Nott'm Forest",
+    "Wolverhampton Wanderers": "Wolves",
+    "AC Milan": "Milan",
+}
+
+
+def resolve_understat_team_name(db: Session, understat_name: str) -> Team | None:
+    """Resolves an understat.com team title to an existing `Team` row already
+    ingested from football-data.co.uk, via `UNDERSTAT_TEAM_NAME_ALIASES` when
+    the spelling differs. Returns None (never guesses/creates a new Team) when
+    no existing row matches — the caller must skip and report that team name
+    rather than silently drop or fabricate rows for it."""
+    candidate = UNDERSTAT_TEAM_NAME_ALIASES.get(understat_name, understat_name)
+    return db.scalar(select(Team).where(Team.canonical_key == canonicalize_team_name(candidate)))
+
+
 def get_or_create_team(db: Session, name: str) -> Team:
     key = canonicalize_team_name(name)
     team = db.scalar(select(Team).where(Team.canonical_key == key))
@@ -48,6 +76,17 @@ def get_or_create_team(db: Session, name: str) -> Team:
         db.add(team)
         db.flush()
     return team
+
+
+def get_or_create_source(
+    db: Session, key: str, name: str, category: DataSourceCategory, is_implemented: bool
+) -> Source:
+    source = db.scalar(select(Source).where(Source.key == key))
+    if source is None:
+        source = Source(key=key, name=name, category=category, is_implemented=is_implemented)
+        db.add(source)
+        db.flush()
+    return source
 
 
 def get_or_create_competition(db: Session, code: str) -> Competition:

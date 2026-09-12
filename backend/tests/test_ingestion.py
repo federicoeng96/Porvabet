@@ -6,7 +6,12 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from app.ingestion.match_ingestion import canonicalize_team_name, ingest_historical_match
+from app.ingestion.match_ingestion import (
+    canonicalize_team_name,
+    get_or_create_team,
+    ingest_historical_match,
+    resolve_understat_team_name,
+)
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
@@ -45,6 +50,32 @@ def _sample_record(external_ref="synthetic:test:1") -> HistoricalMatchRecord:
 def test_canonicalize_team_name_is_stable_and_normalized():
     assert canonicalize_team_name("Manchester United") == canonicalize_team_name("Manchester United")
     assert canonicalize_team_name("Bologna F.C.") == "bologna_f_c"
+
+
+def test_resolve_understat_team_name_uses_alias_map(db_session):
+    # football-data.co.uk (already ingested) spells it "Man United"; understat
+    # says "Manchester United" — real mismatch found this session.
+    existing = get_or_create_team(db_session, "Man United")
+    db_session.flush()
+
+    resolved = resolve_understat_team_name(db_session, "Manchester United")
+    assert resolved is not None
+    assert resolved.id == existing.id
+
+
+def test_resolve_understat_team_name_matches_exact_spelling_without_alias(db_session):
+    existing = get_or_create_team(db_session, "Arsenal")
+    db_session.flush()
+
+    resolved = resolve_understat_team_name(db_session, "Arsenal")
+    assert resolved is not None
+    assert resolved.id == existing.id
+
+
+def test_resolve_understat_team_name_returns_none_when_team_not_ingested(db_session):
+    # No "Team" row exists for this name at all — must not guess/create one.
+    resolved = resolve_understat_team_name(db_session, "Some Unknown FC")
+    assert resolved is None
 
 
 def test_ingest_creates_teams_match_markets_and_odds(db_session):

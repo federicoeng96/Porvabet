@@ -111,31 +111,6 @@ e `app/ingestion/source_registry.py`):
   richiede una chiave (`API_FOOTBALL_KEY`) — senza chiave `is_available()` ritorna
   `False` e il layer di ingestione deve saltare la fonte, mai inventare dati.
 
-### understat.com
-- **Cosa offre**: dati xG/xA per team e partita, Premier League e Serie A dal
-  2014/15 (confermato: copre "big 5 + Russia").
-- **⚠️ Verificato direttamente in questa sessione (rete reale) — il parser
-  attuale è rotto.** `GET https://understat.com/league/EPL/2023` risponde
-  `200` con HTML reale (non bloccato), ma la pagina **non contiene più** la
-  variabile `var datesData = JSON.parse('...')` che `UnderstatProvider.
-  parse_dates_data` cerca: l'HTML scaricato è ~18KB, senza alcun nome squadra
-  o dato di partita al suo interno, e termina caricando `js/league.min.js` —
-  il sito è stato evidentemente **ridisegnato** per costruire la pagina via
-  JavaScript lato client (probabilmente un fetch a un endpoint interno dopo il
-  caricamento) invece di incorporare i dati direttamente nell'HTML come
-  quando questo provider fu scritto. Il docstring del provider aveva già
-  segnalato esplicitamente questo rischio ("gli internals della pagina
-  possono cambiare senza preavviso, va verificato con un fetch reale prima di
-  usarlo in produzione") — ora verificato, e il rischio si è concretizzato.
-  **Non utilizzabile allo stato attuale** senza reverse-engineering del nuovo
-  endpoint interno del sito (lavoro non ancora fatto, non banale, e a rischio
-  di richiedere di nuovo aggiornamenti ad ogni ridisegno del sito).
-- **Stato nel codice**: `UnderstatProvider.parse_dates_data`/
-  `get_historical_matches` esistono ma **falliscono** contro il sito reale
-  (`ValueError: Could not locate 'datesData'...`) — non rimossi (restano
-  corretti per la struttura di pagina che il sito aveva quando furono
-  scritti, utile come riferimento), ma non funzionanti oggi.
-
 ### fbref.com
 - **Cosa offre**: statistiche avanzate squadra/giocatore (tiri, passaggi, azioni
   difensive, metriche per-90).
@@ -148,12 +123,34 @@ e `app/ingestion/source_registry.py`):
   richiesta arriva mai al contenuto). Superare una sfida Cloudflare
   richiederebbe un browser reale (es. Playwright) che esegue JavaScript — una
   scelta tecnica più pesante e più vicina al confine dell'elusione di
-  anti-bot, che **non è stata presa autonomamente** in questa sessione:
-  richiede una decisione esplicita (v. ROADMAP.md punto 5).
+  anti-bot. **Decisione esplicita dell'utente: non aggirare Cloudflare/fbref**
+  (v. ROADMAP.md punto 5) — fbref resta non utilizzabile per questo progetto,
+  non solo "in sospeso".
 - **Stato nel codice**: `FbrefProvider.fetch_table` esiste (con
   `app/core/rate_limiter.py` e la gestione delle tabelle dentro commenti
   HTML) ma **non funziona** contro il sito reale allo stato attuale — il
   problema non è il parsing, è che nessuna risposta valida arriva mai.
+
+### ClubElo — valutato per il Matchup Engine, non xG, non implementato
+
+- **Cosa offre realmente (non xG)**: rating Elo per squadra, aggiornati
+  regolarmente — un segnale di forza-squadra generico, non dati di expected
+  goals/tiri. Richiesto esplicitamente di verificare "cosa offre davvero":
+  confermato che non è un sostituto di understat/fbref per xG, al più una
+  feature aggiuntiva di forza-squadra per il Matchup Engine.
+- **⚠️ Non raggiungibile in questa sessione — inconcludente sul motivo.**
+  Il sito principale (`https://clubelo.com/`) risponde `200` normalmente. Il
+  sottodominio API pubblicamente documentato (`https://api.clubelo.com/...`,
+  usato da diversi progetti open-source noti) **non risponde**: la
+  connessione TLS viene chiusa a metà handshake (`Connection reset by peer`),
+  riproducibile more volte con client diversi (`curl`, `httpx`). Non è chiaro
+  se sia un blocco specifico di questo ambiente sandboxato (IP/proxy) o un
+  comportamento reale del sito verso traffico automatizzato — non abbastanza
+  per una conclusione definitiva in nessuna delle due direzioni. `robots.txt`
+  non trovato (redirect 302 alla home, nessun file dedicato).
+- **Stato nel codice**: non implementato. Anche se fosse raggiungibile, non
+  risolverebbe il gap xG (non è quel tipo di dato) — a bassa priorità rispetto
+  a understat/fbref per questo motivo.
 
 ### StatsBomb Open Data
 - **Cosa offre**: dati event-level molto dettagliati, gratuiti, nessuna chiave.
@@ -271,6 +268,55 @@ l'affidabilità pur senza un fetch diretto della pagina live.
   punto, alla clausola di diretta.it/Flashscore sotto che a quella di
   WhoScored. Rischio contrattuale residuo non eliminato; classificazione B
   invariata.
+
+### understat.com — **riclassificato da A a B in questa sessione**
+
+- **Cosa offre**: xG/xGA/npxG/PPDA/deep completions per team e per partita,
+  Premier League e Serie A dal 2014/15 — verificato essere, per fonti
+  indipendenti, "una delle ultime fonti gratuite di dati xG" per questi
+  campionati (nessuna alternativa gratuita realmente equivalente trovata in
+  questa sessione, v. ROADMAP.md punto 5 per la ricerca completa).
+- **⚠️ Il parser precedente era rotto — ora riparato con l'endpoint reale.**
+  Il sito non incorpora più i dati in uno `<script>` della pagina; verificato
+  con richieste reali che la pagina `/league/{league}/{season}` carica
+  `js/league.min.js`, che a sua volta chiama
+  `GET /getLeagueData/{league}/{season}` via AJAX, autenticato dal cookie di
+  sessione (`PHPSESSID`) impostato dal caricamento della pagina stessa —
+  nessun login, nessuna chiave, solo lo stesso meccanismo che usa il sito per
+  sé. Verificato per EPL e Serie A, stagione 2023: risposta reale con i dati
+  completi (`teams`, `dates`, `players`). `UnderstatProvider` riscritto per
+  usare questo endpoint (visita la pagina lega, poi chiama l'endpoint dati
+  con lo stesso client/cookie) — stesso schema di output di prima
+  (`get_historical_matches`), più un nuovo metodo
+  `get_team_match_tactical_stats` per xG/PPDA/deep completions per il
+  Matchup Engine.
+- **⚠️ `robots.txt` disallowa tutto — riclassificato da A a B.**
+  `https://understat.com/robots.txt` è `User-agent: *` / `Disallow: /` — un
+  disallow totale, senza eccezioni, per qualunque crawler (verificato con
+  fetch diretto in questa sessione — non era mai stato controllato quando
+  questa fonte fu classificata A in origine). **Nessun Terms of Service
+  pubblicato è stato trovato** per understat.com (ricerca approfondita) a cui
+  attribuire una clausola specifica come per WhoScored/SofaScore/diretta.it
+  — il rischio qui è la sola direttiva robots.txt, non un testo legale
+  esplicito. Contesto (non un lasciapassare): esistono strumenti/librerie
+  open source attivamente mantenuti per anni per questo sito (es. il pacchetto
+  PyPI `understatapi`), senza segnali di enforcement attivo osservabile (a
+  differenza della sfida Cloudflare di fbref o del blocco edge di ePlay24).
+- **Nel contesto reale d'uso di questo progetto** (personale, mai
+  distribuito): abbassa il rischio pratico di violare un semplice
+  `robots.txt` (pensato più per crawler di massa/motori di ricerca che per
+  un singolo script personale a basso volume), ma non lo elimina — resta un
+  segnale tecnico esplicito di "non vogliamo bot qui", non ignorabile solo
+  perché non è un ToS. Rischio contrattuale/tecnico residuo non eliminato.
+- **Stato nel codice**: `UnderstatProvider` richiede
+  `acknowledge_personal_use_only=True` per essere istanziato (altrimenti
+  `PersonalUseNotAcknowledgedError`), con
+  `LICENSE_RISK = "personal_use_only_robots_disallow_all"` — un valore
+  distinto da quello di WhoScored/SofaScore, perché il motivo del rischio è
+  diverso (robots.txt, non una clausola ToS betting-specifica) — verificato
+  da `tests/test_understat_provider.py` (parsing testato su un fixture
+  sintetico che replica lo schema JSON reale, senza chiamate di rete nei
+  test, stessa convenzione di `test_football_data_provider.py`).
 
 ---
 
@@ -464,13 +510,13 @@ da questo audit completo, motivato dal nuovo caso d'uso (quote).
 |---|---|---|---|
 | football-data.co.uk | A | ✅ | Fonte primaria di questo slice |
 | API-Football | A | ✅ | Richiede chiave propria |
-| understat.com | A | ✅ | xG/xA, non risultati completi |
-| fbref.com | A | ✅ | Rate-limited 10/min |
 | Open-Meteo | A | ✅ | Meteo |
 | RSS/Atom generico | A | ✅ | News, URL da configurazione |
+| fbref.com | A | ❌ | Bloccato da Cloudflare — decisione utente: non aggirare |
 | StatsBomb Open Data | A | ❌ | Non copre stagioni correnti |
 | AIA-FIGC / PGMOL | A | ❌ | Parser non ancora scritto |
 | Transfermarkt | A | ❌ | ToS non verificato a fondo |
+| understat.com | B | ✅ | Riclassificato da A: robots.txt disallow-all. Riparato (nuovo endpoint), flag richiesto |
 | WhoScored | B | ❌ | Flag di conferma richiesto, scraping non implementato |
 | SofaScore | B | ❌ | Flag di conferma richiesto, scraping non implementato |
 | SOS Fanta | C | ❌ | Solo interfaccia |

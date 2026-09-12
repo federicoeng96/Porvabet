@@ -59,6 +59,15 @@ riflette cosa è già fatto e cosa manca davvero).
 15. ✅ **Calibrazione post-hoc (Platt/isotonica) testata, non attivata**
     (v. punto 3 sotto per il dettaglio): terzo tentativo indipendente che non
     risolve l'overconfidence nelle code alte in modo consistente.
+16. ✅ **Audit fonti quote reali (diretta.it/Betson) e fonti xG gratuite**:
+    diretta.it/Betson valutato per il Value/Odds Engine e classificato
+    categoria C (v. DATA_SOURCES.md) — ToS vieta lo scraping senza eccezione
+    per uso personale, quota di un bookmaker terzo in licenza display-only,
+    non implementato. understat riparato (nuovo endpoint reale) e
+    riclassificato categoria B (robots.txt disallow-all) — prima estrazione
+    xG/PPDA reale eseguita, 10.640 righe `TacticalFeature` (v. punto 5 sotto).
+    Aggiunta nota permanente "uso esclusivamente personale" in
+    README.md/DATA_SOURCES.md.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
@@ -126,37 +135,65 @@ Il mercato falli (dati già ingeriti, `TeamMatchStats.fouls_committed`) non
 ha ancora un modello/mercato dedicato — i falli non sono tipicamente un
 mercato scommesse standalone come corner/cartellini, priorità bassa.
 
-### 5. ⚠️ Feature tattiche misurabili (Matchup Engine) — bloccato su entrambe le fonti candidate, verificato in questa sessione
+### 5. ✅ Feature tattiche misurabili (xG/PPDA via understat) — sbloccato, prima estrazione reale fatta
 Il data model (`TacticalFeature`) e la lista di feature del brief
 (crosses_per_90, PPDA, progressive_passes, ecc.) sono già previsti nello
-schema. Le due fonti candidate per l'estrazione reale sono state **testate
-con rete reale in questa sessione, per la prima volta** (i loro provider
-erano scritti ma mai eseguiti contro il sito vero — i rispettivi docstring lo
-segnalavano esplicitamente):
-- **understat.com**: il sito risponde (200), ma la sua struttura interna è
-  cambiata — la pagina non incorpora più i dati come JSON in uno `<script>`
-  (`UnderstatProvider.parse_dates_data` cerca `var datesData = JSON.parse(...)`,
-  non più presente); il sito ora carica i dati via JavaScript lato client
-  dopo il caricamento. Il parser attuale **non funziona**.
-- **fbref.com**: bloccato da Cloudflare (403, sfida JavaScript anti-bot)
-  prima ancora di arrivare al contenuto — il limite di 10 richieste/minuto
-  dichiarato da fbref non è il problema, è un blocco a monte.
-- **StatsBomb Open Data**: già verificato e già escluso in DATA_SOURCES.md —
-  copre solo stagioni storiche isolate (2015/16 e più vecchie), non la
-  stagione corrente, quindi utile solo per validazione metodologica futura,
-  mai come feed reale.
+schema. Stato reale, dopo un audit completo delle fonti gratuite di xG
+(decisione esplicita dell'utente: non aggirare Cloudflare/fbref; verificare
+se understat è riparabile prima di scartarlo; controllare ClubElo e cercare
+altre fonti reali):
 
-**Nessuna fonte candidata produce oggi dati tattici reali estraibili senza
-altro lavoro.** Sbloccare understat richiederebbe reverse-engineering del suo
-nuovo meccanismo di caricamento dati (endpoint interno non documentato,
-lavoro non banale e fragile). Sbloccare fbref richiederebbe un browser reale
-(es. Playwright) per superare la sfida Cloudflare — una scelta tecnica più
-pesante e più vicina al confine dell'elusione di anti-bot, che **non è stata
-presa autonomamente**: richiede una decisione esplicita dell'utente su se e
-come procedere. Fino ad allora, l'entity-resolution cross-provider
-(`canonicalize_team_name`, oggi solo normalizzazione lessicale semplice) resta
-un rafforzamento prematuro — non ha senso costruirla prima di avere una
-seconda fonte reale da collegare.
+- **understat.com — riparato e riclassificato B, ora la fonte reale.** Il
+  cambio struttura del sito era **riparabile**, non un blocco definitivo: la
+  pagina lega ora carica i dati via `GET /getLeagueData/{league}/{season}`
+  (sessione via cookie, nessuna chiave) invece di incorporarli nell'HTML —
+  `UnderstatProvider` riscritto per usare il nuovo endpoint, verificato con
+  richieste reali (EPL+Serie A, 2023/24: 380 partite, 760 righe di stats
+  tattiche). **Ma**: `robots.txt` disallowa tutto il sito (`Disallow: /`,
+  nessuna eccezione) — fatto mai controllato quando fu classificato A in
+  origine. Riclassificato **categoria B** (rischio accettato, uso personale),
+  non più A — v. DATA_SOURCES.md per il dettaglio e il perché non è come le
+  clausole ToS di WhoScored/SofaScore.
+- **fbref.com**: bloccato da Cloudflare. **Decisione esplicita dell'utente:
+  non aggirarlo** — resta non utilizzabile, non solo "in sospeso".
+- **ClubElo**: verificato cosa offre davvero — rating Elo, non xG. Il
+  sottodominio API pubblico non è stato raggiungibile in questa sessione
+  (connessione TLS interrotta, ripetibile) — inconcludente se sia un blocco
+  reale o un problema di questo ambiente sandboxato. Comunque non
+  risolverebbe il gap xG anche se raggiungibile.
+- **Nessuna altra fonte xG gratuita reale trovata** con una ricerca vera (non
+  solo Kaggle/scraper di terze parti che ri-pubblicano gli stessi dati di
+  understat, o servizi a pagamento) — understat resta, per fonti indipendenti,
+  "una delle ultime fonti gratuite di xG" per questi campionati.
+
+**Entity-resolution cross-provider**: mismatch reali trovati confrontando i
+nomi squadra football-data.co.uk vs understat (Man City/Manchester City, Man
+United/Manchester United, Newcastle/Newcastle United, Nott'm Forest/
+Nottingham Forest, Wolves/Wolverhampton Wanderers, Milan/AC Milan) — risolti
+con una mappa di alias esplicita e verificata (`UNDERSTAT_TEAM_NAME_ALIASES`
+in `app/ingestion/match_ingestion.py`), non un matcher fuzzy generico: il
+numero di club di massima serie è basso e finito, un alias hand-curated è più
+onesto di un'euristica che potrebbe sbagliare silenziosamente. Un nome non
+risolvibile (squadra mai ingerita da football-data.co.uk) viene saltato e
+riportato esplicitamente (`scripts/ingest_understat_tactical_features.py`),
+mai indovinato.
+
+**Prima estrazione reale eseguita**: `scripts/ingest_understat_tactical_features.py`
+ha scritto **10.640 righe reali** `TacticalFeature` (xG, xGA, npxG, npxGA,
+PPDA, deep completions/deep completions allowed — window_matches=1, valore
+grezzo per singola partita, non ancora una media mobile) per EPL+Serie A,
+stagione 2023/24, 0 nomi squadra irrisolti. Scalare a tutte le 10 stagioni è
+meccanico (stesso script, altre stagioni in `SEASONS`) ma non ancora eseguito
+per tempo in questa sessione.
+
+**Cosa resta esplicitamente aperto** (non fatto in questa sessione):
+- Aggregazione a finestra mobile no-leakage (window_matches>1) — quale
+  finestra, quale aggregazione, è una vera decisione di design, meglio presa
+  quando un consumatore reale (Matchup/Intelligence Engine, punto 6 sotto) ne
+  ha bisogno che indovinata ora.
+- Estensione alle altre 9 stagioni disponibili.
+- crosses_per_90/progressive_passes (non in understat, servirebbero fbref o
+  un'altra fonte — bloccati dagli stessi motivi sopra).
 
 ### 6. Intelligence Engine
 Interfaccia predisposta (`app/engine/intelligence/`, oggi vuota) — deve

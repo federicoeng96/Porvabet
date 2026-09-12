@@ -38,6 +38,15 @@ evento — coerente con l'indicazione del brief.
   trasferibilità per le neopromosse (menzionato nel brief) è pianificato come
   un peso aggiuntivo sui match di stagioni precedenti in categorie diverse
   (v. ROADMAP), non ancora implementato.
+- **Dati tattici reali ora disponibili, non ancora usati dal modello**: xG,
+  xGA, npxG, PPDA e deep completions per partita (da understat.com, v.
+  DATA_SOURCES.md categoria B) sono stati estratti e persistiti in
+  `TacticalFeature` per EPL+Serie A 2023/24 (`scripts/
+  ingest_understat_tactical_features.py`, 10.640 righe reali, valore grezzo
+  per singola partita — non ancora una media mobile no-leakage). **Nessun
+  modello statistico li legge ancora**: Dixon-Coles resta basato solo sui
+  gol. Sono la base dati per il futuro Matchup Engine (ROADMAP.md punto 5),
+  non ancora una feature attiva in produzione.
 
 ## Corner e cartellini: modello e limite strutturale sul value
 

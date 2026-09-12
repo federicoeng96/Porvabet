@@ -37,9 +37,13 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
     SourceDefinition(
         key="understat",
         name="understat.com",
-        category=DataSourceCategory.A_UNRESTRICTED,
+        category=DataSourceCategory.B_PERSONAL_USE_ONLY,
         is_implemented=True,
-        notes="xG/xA data embedded as JSON in page <script> tags. EPL/Serie A since 2014/15.",
+        notes="xG/xA/PPDA/deep-completions via GET /getLeagueData/{league}/{season} "
+        "(session-cookie based, verified with real requests this session — old "
+        "embedded-<script> approach is broken, site redesigned). Reclassified A->B: "
+        "robots.txt disallows all (Disallow: / for User-agent: *), no published ToS "
+        "found. Requires acknowledge_personal_use_only=True. EPL/Serie A since 2014/15.",
     ),
     SourceDefinition(
         key="fbref",
