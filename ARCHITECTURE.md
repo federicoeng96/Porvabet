@@ -92,6 +92,24 @@ fonti vanno riverificate da capo prima di essere implementate — questo
 documento non deve essere trattato come prova che siano permanentemente
 irraggiungibili.
 
+## LineupProvider/TacticalProvider — stato per FantaLab
+
+L'interfaccia `LineupProvider` (`app/providers/base/lineup_provider.py`) è già
+usata da `SosFantaLineupProvider`/`GazzettaLineupProvider` (probabili
+formazioni, entrambi stub non implementati). **Nessuna classe FantaLab è
+stata aggiunta**: l'audit tecnico (v. `DATA_SOURCES.md`) ha trovato che i dati
+reali (moduli, titolari, tiratori di rigori/punizioni — da collegare in
+futuro al modulo palle inattive esistente, v. MODEL_SPEC.md set-piece —
+ballottaggi, focus allenatori Premium) risiedono dietro un Firebase Realtime
+Database autenticato, con un login utente che passa per un sistema di
+identità diverso (AWS Cognito) il cui ponte verso Firebase non è verificabile
+da analisi statica. Implementarlo richiederebbe login Premium reale
+automatizzato via browser — bloccato anche dal limite della sezione sopra —
+oltre a una decisione esplicita dell'utente sul rischio verso il proprio
+account (categoria di rischio distinta, mai stata necessaria finora in questo
+progetto). Nessuna implementazione è stata tentata; l'audit è stato segnalato
+invece di essere risolto unilateralmente.
+
 ## Principio cardine: separazione Provider → Ingestion → Engine → API
 
 ```

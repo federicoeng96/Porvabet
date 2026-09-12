@@ -622,6 +622,82 @@ pronta per quando (e se) una delle due fonti reali verrà completata. Nessuna
 delle due fonti fornisce oggi quote reali al Value/Odds Engine, che continua
 a usare esclusivamente football-data.co.uk per le quote storiche.
 
+### FantaLab — moduli/titolari/tiratori/ballottaggi (Serie A)
+
+**Audit tecnico eseguito, implementazione bloccata e segnalata all'utente
+invece di essere risolta unilateralmente** — non per scelta, ma perché la
+premessa tecnica data ("verifica se esiste un'API sottostante come per
+understat, prima di considerare un browser headless") si è risolta in
+negativo in un modo qualitativamente diverso da ogni altra fonte di questo
+progetto.
+
+**1. Verifica tecnica (fetch reali di questa sessione)**: `fantalab.it` è
+un'app React a bundle unico (`main.adb6a8b9.js`, ~2.7MB — confermato via
+`asset-manifest.json` che non esiste alcun altro chunk JS, quindi tutta la
+logica client è in quel file). Ispezionando il bundle:
+- `api.fantalab.it` esiste ma serve **solo** funzioni di marketing/deep-link
+  (`update_state`, `sign-out-marketing`, `links/click`, `links/deferred`,
+  `kite/link/.../redeem`) — nessun endpoint dati calcio.
+- I dati reali (moduli, titolari, ballottaggi, tiratori) risiedono in un
+  **Firebase Realtime Database** (`fantalab-79eaa-default-rtdb...`).
+  Verificato dal vivo: `GET /.json` senza auth → `401 "Permission denied"` —
+  serve un token valido per ogni lettura.
+- Il login utente passa per **AWS Cognito via Amplify SDK** (flusso SRP) — un
+  sistema di identità diverso da Firebase Auth. **Non è stata trovata da
+  nessuna parte nel bundle** una chiamata a `identitytoolkit.googleapis.com`
+  né un endpoint di scambio custom-token che colleghi Cognito → Firebase:
+  non è determinabile da analisi statica se/come una sessione Cognito
+  autenticata dia accesso in lettura al RTDB.
+- Nessuna API pubblica/developer scopribile: le stringhe `"no api key"`
+  trovate sono errori interni generici dell'SDK Amplify, non specifici di
+  FantaLab. La clausola ToS "Condizioni d'uso dell'API" (v. punto 2) è
+  boilerplate del template legale, senza endpoint/documentazione concreti.
+
+**2. ToS reali di FantaLab (non di fantacalcio.it — società distinta, verifica
+esplicitamente richiesta e rispettata)**: recuperati su Iubenda
+(`https://www.iubenda.com/termini-e-condizioni/96070560`, dominio proprio di
+"FantaLab LTD", confermato dal testo). Nessuna clausola esplicita su
+bot/scraping/crawling/automazione trovata. C'è un divieto generico di
+"copiare, scaricare, condividere oltre i limiti... senza consenso scritto"
+oltre l'uso personale non commerciale, e un divieto di far agire terzi
+tramite il proprio account "anche a propria insaputa" — quest'ultimo
+inquadrato come sicurezza/frode dell'account, non esplicitamente come
+automazione.
+
+**3. Perché mi sono fermato invece di implementare**: a differenza di
+understat (endpoint JSON semplice trovato e chiamabile con `httpx`), qui non
+esiste alcuna API piana raggiungibile senza risolvere un ponte di
+autenticazione non visibile staticamente tra due sistemi di identità diversi
+(Cognito per il login, Firebase per i dati). L'unica via praticabile sarebbe:
+un browser headless con login Premium reale e ripetuto contro un login
+protetto da Cognito (tipicamente abbinato a bot-detection AWS WAF), più
+un tentativo di reverse-engineering del collegamento Cognito→Firebase
+osservabile solo con traffico live da una sessione autenticata vera. Questo è
+un salto di rischio/impegno — automazione GUI reale sul conto Premium
+dell'utente, non semplici richieste HTTP dirette — rispetto a tutto ciò che è
+stato implementato finora in questo progetto, e rientra esplicitamente nel
+caso "ambiguità che richiede una decisione dell'utente" piuttosto che una
+scelta risolvibile autonomamente. **Nessun `LineupProvider`/`TacticalProvider`
+per FantaLab è stato implementato.** Non è stato inoltre possibile verificare
+se il "Centro Dati" copra davvero Premier League/Liga/Bundesliga/Ligue 1 o solo
+Serie A in pratica, perché la verifica richiederebbe lo stesso accesso
+autenticato bloccato sopra.
+
+**Nota sul rischio verso il proprio account (categoria distinta dai rischi
+ToS verso terzi)**: se in futuro l'utente autorizzasse l'automazione del
+login Premium, quel rischio andrebbe documentato come categoria a sé —
+sospensione del proprio account per automazione ripetuta, un rischio che
+ricade sull'utente stesso, non su un terzo — distinto dai rischi ToS-verso-
+il-sito già visti per WhoScored/SofaScore/Betson. Uno standard di gestione configurazione esiste già in questo progetto
+(`app/config.py`, `pydantic_settings.BaseSettings`, valori letti da un file
+`.env` non versionato, con la convenzione esplicita che l'assenza di una
+chiave deve degradare a "provider non disponibile", mai a un fallback con
+dati fabbricati — v. `api_football_key` come esempio già in uso). Andrebbe
+esteso con campi analoghi (es. `fantalab_email`/`fantalab_password`, opzionali,
+mai hardcoded né in chiaro nel codice o nei log) solo se e quando questo
+lavoro verrà sbloccato dall'utente.
+
+
 ### SOS Fanta / Gazzetta dello Sport (probabili formazioni)
 - Non fanno parte dell'elenco di fonti analizzate a fondo in questo progetto (il
   brief le nomina come fonti attese per le probabili formazioni di Serie A, ma non
@@ -656,3 +732,4 @@ a usare esclusivamente football-data.co.uk per le quote storiche.
 | legaseriea.it | C | ❌ | Vietato dai propri termini |
 | Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
 | livescore.com (quote, backup) | C | ❌ | Auditata da zero; quote dietro widget affiliato gated, mai osservate dal vivo |
+| FantaLab (moduli/titolari/ballottaggi) | C | ❌ | Audit bloccato e segnalato — nessuna API piana, ponte auth Cognito→Firebase non verificabile |
