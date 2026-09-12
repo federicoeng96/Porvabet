@@ -433,6 +433,49 @@ un'attivazione uniforme. Un'attivazione **solo per EPL**, se mai presa,
 richiederebbe la stessa cautela già usata per le decisioni di questo tipo:
 non abbastanza dati qui (una sola stagione) per escludere che sia rumore.
 
+### Aggiornamento (turno successivo, dopo il backfill a 10 stagioni) — ri-testato, il segnale EPL non regge
+
+Stesso protocollo esatto (refit=7gg, `MIN_TRAINING_MATCHES=80`), stesso
+codice di produzione (`compute_xg_adjustment_factor`/
+`apply_tactical_adjustment`, non modificato), ora su tutte le 10 stagioni
+disponibili (2015/16–2024/25) invece che solo 2023/24 — **~12 volte più
+osservazioni per segmento** (n=900→11.118 per MATCH_RESULT, n=600→4.548 per
+TOTAL_GOALS, per campionato).
+
+| Segmento | n | Brier raw | Brier xG-adj | LogLoss raw | LogLoss xG-adj |
+|---|---|---|---|---|---|
+| EPL MATCH_RESULT | 11.118 | 0.1923 | 0.1930 (peggiora, marginale) | 0.5721 | 0.5736 (peggiora, marginale) |
+| EPL TOTAL_GOALS | 4.548 | 0.2441 | 0.2438 (migliora, marginale) | 0.6817 | 0.6811 (migliora, marginale) |
+| Serie A MATCH_RESULT | 11.112 | 0.1921 | 0.1920 (invariato) | 0.5717 | 0.5717 (identico) |
+| Serie A TOTAL_GOALS | 4.540 | 0.2465 | 0.2468 (peggiora, marginale) | 0.6869 | 0.6874 (peggiora, marginale) |
+
+**Il precedente segnale positivo per l'EPL (Brier 0.1898→0.1870,
+−0.0028) non regge con 12 volte più dati (0.1923→0.1930, +0.0007, di
+segno opposto).** Tutte le differenze aggregate, per entrambi i
+campionati ed entrambi i mercati, sono ora dell'ordine di ±0.0005-0.0007 —
+compatibili con rumore, non con un effetto reale in nessuna direzione.
+Questo è l'esito onesto, anche se diverso da entrambe le ipotesi poste
+esplicitamente all'inizio del ri-test ("aiuta anche la Serie A" oppure "si
+conferma uguale a prima"): **il miglioramento EPL osservato con una sola
+stagione (n=900) appare, con più dati, un artefatto di campione piccolo**,
+non un effetto reale specifico del campionato.
+
+Unica eccezione parziale: nelle fasce di calibrazione alte (0.7+) per
+**EPL MATCH_RESULT**, il gap continua a restringersi con la correzione
+applicata anche nel campione più ampio (0.7-0.8: −0.023→−0.012; 0.8-0.9:
++0.020→+0.006; 0.9-1.0: +0.074→+0.017, ma n=21→12, ancora piccolo) — un
+segnale di calibrazione nelle code che non emerge nel Brier/log loss
+aggregato. Non abbastanza per giustificare un'attivazione (un solo mercato,
+un solo campionato, bin con n ancora limitato), ma onestamente diverso da
+un "nessun effetto in assoluto".
+
+**Decisione confermata, ora su base più solida**: `compute_xg_adjustment_factor`
+resta **non attivato** per entrambi i campionati — la conclusione non
+cambia, ma la sua giustificazione è più forte (12 volte più dati, nessun
+segnale aggregato consistente in nessuna direzione) invece di riposare su
+una singola stagione dove un'apparente differenza tra campionati poteva
+essere solo rumore campionario, come infatti sembra essere stato.
+
 ## PPDA/deep completions vs corner — correlazione reale confermata, correzione testata e scartata
 
 Prima di costruire qualunque correzione, verificata la correlazione reale tra

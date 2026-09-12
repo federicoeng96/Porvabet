@@ -212,12 +212,18 @@ stretto, ha poi completato il resto senza altri errori.
 
 **Collegate al Decision Engine, backtestate, decisione basata sui numeri**
 (v. MODEL_SPEC.md/BACKTEST_SPEC.md per il dettaglio):
-- Correzione xG su Dixon-Coles: migliora davvero l'EPL, non aiuta la Serie A
-  → non attivata di default per nessuno dei due.
+- Correzione xG su Dixon-Coles: su 2023/24 sembrava aiutare l'EPL, non la
+  Serie A — **ri-testata su tutte e 10 le stagioni (turno successivo): il
+  segnale EPL non regge**, differenze aggregate marginali e incoerenti per
+  entrambi i campionati con 12 volte più dati (v. BACKTEST_SPEC.md) → non
+  attivata, conclusione confermata su base più solida.
 - Correzione corner da deep completions (correlazione reale confermata prima
-  di costruire nulla: r=+0.447 con i corner) su `PoissonCountModel`: peggiora
-  la previsione su ogni metrica, entrambi i campionati → scartata, non
-  attivata.
+  di costruire nulla: r=+0.447 con i corner, **riconfermata su 10 stagioni
+  a r=+0.424** — non un artefatto di campione piccolo) su `PoissonCountModel`:
+  peggiora la previsione su ogni metrica, entrambi i campionati → scartata,
+  non attivata; backtest completo non ripetuto sulle 10 stagioni perché la
+  riconferma della correlazione già isola il problema nel meccanismo di
+  correzione, non nella scarsità di dati.
 Entrambe restano nel codice, testate, non collegate al layer di analisi live.
 
 **Cosa resta esplicitamente aperto**:

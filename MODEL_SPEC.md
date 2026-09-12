@@ -51,28 +51,40 @@ evento — coerente con l'indicazione del brief.
   partite precedenti con dato xG per quella squadra (altrimenti il modello
   resta quello attuale, senza correzione — v. BACKTEST_SPEC.md "xG-adjusted
   Dixon-Coles" per il perché di questo comportamento).
-  **Risultato del backtest reale (EPL+Serie A 2023/24, unica stagione
-  coperta)**: migliora Brier/log loss/calibrazione nelle fasce alte per
-  l'**EPL** su entrambi i mercati, ma **non aiuta la Serie A** (leggermente
-  peggio, e introduce overconfidence in un bin che nel modello raw era già
-  ben calibrato). **Decisione basata sui numeri**: non attivata di default
-  per nessuno dei due campionati — un beneficio specifico a un solo
-  campionato, su una sola stagione di dati, non è una base solida per
-  un'attivazione uniforme. Il codice resta testato e pronto, non cancellato.
+  **Risultato del backtest reale, aggiornato dopo il backfill a 10
+  stagioni (2015/16–2024/25, ~12 volte più osservazioni della prima
+  verifica)**: sulla sola stagione 2023/24 sembrava migliorare Brier/log
+  loss/calibrazione per l'**EPL** ma non per la Serie A. **Ri-testato sullo
+  stesso identico protocollo con tutte le 10 stagioni: quel segnale EPL non
+  regge** — le differenze aggregate diventano marginali (±0.0005-0.0007) e
+  di segno incoerente per entrambi i campionati/mercati, compatibili con
+  rumore, non con un effetto reale. L'apparente beneficio EPL osservato con
+  una sola stagione era, con più dati, verosimilmente un artefatto di
+  campione piccolo (v. BACKTEST_SPEC.md per la tabella comparativa
+  completa). **Decisione confermata, su base più solida**: non attivata di
+  default per nessuno dei due campionati. Il codice resta testato e pronto,
+  non cancellato.
 - **Correzione corner da PPDA/deep completions — correlazione reale
-  confermata, correzione scartata.** Verificato prima di costruire nulla: PPDA
-  e deep completions correlano davvero con i corner reali (Pearson r=−0.264 e
-  +0.447 su 1.516 osservazioni 2023/24), non un'assunzione. La correzione
-  costruita su deep completions (stesso meccanismo dell'aggiustamento xG:
-  rapporto squadra/media-lega, clippato, mai applicato senza >= 5 partite di
-  dato) **peggiora** però Brier, log loss e calibrazione su **ogni** metrica,
-  per **entrambi** i campionati (v. BACKTEST_SPEC.md "PPDA/deep completions vs
-  corner" per la tabella completa) — un risultato negativo netto, non solo
-  incoerente tra segmenti. Ipotesi (non verificata oltre): l'attacco/difesa
-  già fittati da `PoissonCountModel` catturano implicitamente lo stesso
-  segnale, per cui la correzione aggiunge rumore, non informazione. `compute_
-  deep_completions_adjustment_factor` resta nel codice, testato, non
-  collegato a `count_market_estimates.py`.
+  confermata (due volte), correzione scartata.** Verificato prima di
+  costruire nulla: PPDA e deep completions correlano davvero con i corner
+  reali (Pearson r=−0.264 e +0.447 su 1.516 osservazioni 2023/24). La
+  correzione costruita su deep completions (stesso meccanismo
+  dell'aggiustamento xG: rapporto squadra/media-lega, clippato, mai
+  applicato senza >= 5 partite di dato) **peggiora** però Brier, log loss e
+  calibrazione su **ogni** metrica, per **entrambi** i campionati (v.
+  BACKTEST_SPEC.md "PPDA/deep completions vs corner" per la tabella
+  completa) — un risultato negativo netto, non solo incoerente tra
+  segmenti. **Riconfermato dopo il backfill a 10 stagioni**: la correlazione
+  resta della stessa entità su 15.122 osservazioni (r=−0.310/+0.424) — non
+  era un artefatto di campione piccolo. Il backtest completo non è stato
+  ripetuto: la riconferma della correlazione grezza già risponde alla
+  domanda (il problema è nel meccanismo della correzione, non nella
+  scarsità di dati), ripetere il backtest walk-forward avrebbe avuto un
+  esito già prevedibile. Ipotesi sul perché la correzione non aiuta (non
+  verificata oltre): l'attacco/difesa già fittati da `PoissonCountModel`
+  catturano implicitamente lo stesso segnale, per cui la correzione aggiunge
+  rumore, non informazione. `compute_deep_completions_adjustment_factor`
+  resta nel codice, testato, non collegato a `count_market_estimates.py`.
 - **Intelligence Engine — solo il livello di validazione, non un generatore
   di segnali**: `app/engine/intelligence/validation.py` confronta
   un'ipotesi qualitativa (`IntelligenceSignal`, es. "pressing più aggressivo
