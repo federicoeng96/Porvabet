@@ -192,6 +192,16 @@ stagione 2023/24, 0 nomi squadra irrisolti. Scalare a tutte le 10 stagioni è
 meccanico (stesso script, altre stagioni in `SEASONS`) ma non ancora eseguito
 per tempo in questa sessione.
 
+**Collegate al Decision Engine, backtestate, decisione basata sui numeri**
+(v. MODEL_SPEC.md/BACKTEST_SPEC.md per il dettaglio):
+- Correzione xG su Dixon-Coles: migliora davvero l'EPL, non aiuta la Serie A
+  → non attivata di default per nessuno dei due.
+- Correzione corner da deep completions (correlazione reale confermata prima
+  di costruire nulla: r=+0.447 con i corner) su `PoissonCountModel`: peggiora
+  la previsione su ogni metrica, entrambi i campionati → scartata, non
+  attivata.
+Entrambe restano nel codice, testate, non collegate al layer di analisi live.
+
 **Cosa resta esplicitamente aperto** (non fatto in questa sessione):
 - Aggregazione a finestra mobile no-leakage (window_matches>1) — quale
   finestra, quale aggregazione, è una vera decisione di design, meglio presa

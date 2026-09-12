@@ -9,6 +9,7 @@ from app.engine.statistical.tactical_adjustment import (
     FACTOR_CLIP_RANGE,
     MIN_MATCHES_FOR_FACTOR,
     apply_tactical_adjustment,
+    compute_deep_completions_adjustment_factor,
     compute_xg_adjustment_factor,
 )
 from app.ingestion.match_ingestion import (
@@ -117,3 +118,53 @@ def test_apply_tactical_adjustment_passes_through_when_factor_is_none():
     lam, mu = apply_tactical_adjustment(1.5, 1.2, home_factor=None, away_factor=None)
     assert lam == 1.5
     assert mu == 1.2
+
+
+def _seed_deep_values(db_session, team, values, start):
+    for i, v in enumerate(values):
+        db_session.add(
+            TacticalFeature(
+                team_id=team.id,
+                as_of_date=start + timedelta(days=7 * i),
+                feature_name="deep",
+                value=v,
+                window_matches=1,
+            )
+        )
+    db_session.flush()
+
+
+def test_deep_completions_factor_above_one_for_above_average_team(db_session):
+    league_start = CUTOFF - timedelta(days=100)
+    high_team = get_or_create_team(db_session, "Synth Deep High")
+    low_team = get_or_create_team(db_session, "Synth Deep Low")
+    db_session.flush()
+    _seed_deep_values(db_session, high_team, [12.0] * 6, league_start)
+    _seed_deep_values(db_session, low_team, [4.0] * 6, league_start)
+
+    factor = compute_deep_completions_adjustment_factor(db_session, high_team.id, as_of=CUTOFF)
+    assert factor is not None
+    assert factor > 1.0
+
+
+def test_deep_completions_factor_below_one_for_below_average_team(db_session):
+    league_start = CUTOFF - timedelta(days=100)
+    high_team = get_or_create_team(db_session, "Synth Deep High 2")
+    low_team = get_or_create_team(db_session, "Synth Deep Low 2")
+    db_session.flush()
+    _seed_deep_values(db_session, high_team, [12.0] * 6, league_start)
+    _seed_deep_values(db_session, low_team, [4.0] * 6, league_start)
+
+    factor = compute_deep_completions_adjustment_factor(db_session, low_team.id, as_of=CUTOFF)
+    assert factor is not None
+    assert factor < 1.0
+
+
+def test_deep_completions_factor_none_with_too_few_matches(db_session):
+    team = get_or_create_team(db_session, "Synth Deep Sparse")
+    db_session.flush()
+    _seed_deep_values(db_session, team, [10.0, 10.0], CUTOFF - timedelta(days=30))
+    assert 2 < MIN_MATCHES_FOR_FACTOR
+
+    factor = compute_deep_completions_adjustment_factor(db_session, team.id, as_of=CUTOFF)
+    assert factor is None

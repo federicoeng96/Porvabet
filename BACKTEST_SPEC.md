@@ -433,6 +433,52 @@ un'attivazione uniforme. Un'attivazione **solo per EPL**, se mai presa,
 richiederebbe la stessa cautela già usata per le decisioni di questo tipo:
 non abbastanza dati qui (una sola stagione) per escludere che sia rumore.
 
+## PPDA/deep completions vs corner — correlazione reale confermata, correzione testata e scartata
+
+Prima di costruire qualunque correzione, verificata la correlazione reale tra
+i dati tattici e i corner effettivi (2023/24 EPL+Serie A, 1.516 osservazioni
+squadra-partita con sia dato tattico che corner reali):
+
+| Feature | Corner (Pearson r) |
+|---|---|
+| PPDA (pressing — più basso = più aggressivo) | **−0.264** (pressing più aggressivo → più corner, direzione ipotizzata confermata) |
+| Deep completions | **+0.447** (segnale più forte di PPDA) |
+
+Entrambe le correlazioni sono reali e non banali — non assunte, verificate.
+Costruita quindi una correzione basata su deep completions (segnale più
+forte): `compute_deep_completions_adjustment_factor` — rapporto tra la media
+di deep completions della squadra (solo partite precedenti) e la media di
+lega nella stessa finestra, clippato come per l'aggiustamento xG, applicata
+al lambda/mu grezzo di `PoissonCountModel` per il mercato corner (linea 9.5).
+
+Backtestata con lo stesso protocollo walk-forward (refit=21gg,
+`MIN_TRAINING_MATCHES=40`), EPL+Serie A 2023/24:
+
+| Segmento | n | Hit rate raw | Hit rate adj | Brier raw | Brier adj | LogLoss raw | LogLoss adj |
+|---|---|---|---|---|---|---|---|
+| EPL corner | 331 | 58.3% | 58.0% | 0.2512 | **0.2705** | 0.7102 | **0.7864** |
+| Serie A corner | 308 | 54.2% | **48.1%** | 0.2656 | **0.3173** | 0.7383 | **0.8883** |
+
+Calibrazione nelle fasce alte, entrambi i campionati: il gap **peggiora** in
+ogni singolo bin ≥0.7 con la correzione applicata (es. EPL 0.7-0.8: gap
++0.166→+0.246; Serie A 0.9-1.0: gap +0.191→+0.369).
+
+**Conclusione onesta — risultato negativo, non solo incoerente questa
+volta: la correzione peggiora la previsione su ogni metrica, per entrambi i
+campionati.** La correlazione osservata è reale, ma applicarla come fattore
+moltiplicativo aggiuntivo su `PoissonCountModel` non aiuta — un'ipotesi
+plausibile (non verificata oltre in questa sessione): l'attacco/difesa già
+fittati dal modello Poisson catturano implicitamente lo stile di gioco di
+una squadra (incluso quanto genera azioni pericolose in zona avanzata), per
+cui una correzione basata su deep completions aggiunge lo stesso segnale una
+seconda volta invece di informazione nuova — amplificando la varianza
+piuttosto che migliorare la stima. **Decisione basata sui numeri**: `compute_
+deep_completions_adjustment_factor` resta nel codice, testato, **non
+collegato** a `count_market_estimates.py` — nessuna attivazione, per nessuno
+dei due campionati. A differenza dell'aggiustamento xG (positivo per l'EPL),
+qui il segnale negativo è netto su entrambi i campionati, non solo
+incoerente tra loro.
+
 ## Cosa manca (onestamente)
 
 - ✅ Il refit più frequente (7 giorni, default) su tutte le 10 stagioni è

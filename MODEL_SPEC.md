@@ -59,6 +59,20 @@ evento — coerente con l'indicazione del brief.
   per nessuno dei due campionati — un beneficio specifico a un solo
   campionato, su una sola stagione di dati, non è una base solida per
   un'attivazione uniforme. Il codice resta testato e pronto, non cancellato.
+- **Correzione corner da PPDA/deep completions — correlazione reale
+  confermata, correzione scartata.** Verificato prima di costruire nulla: PPDA
+  e deep completions correlano davvero con i corner reali (Pearson r=−0.264 e
+  +0.447 su 1.516 osservazioni 2023/24), non un'assunzione. La correzione
+  costruita su deep completions (stesso meccanismo dell'aggiustamento xG:
+  rapporto squadra/media-lega, clippato, mai applicato senza >= 5 partite di
+  dato) **peggiora** però Brier, log loss e calibrazione su **ogni** metrica,
+  per **entrambi** i campionati (v. BACKTEST_SPEC.md "PPDA/deep completions vs
+  corner" per la tabella completa) — un risultato negativo netto, non solo
+  incoerente tra segmenti. Ipotesi (non verificata oltre): l'attacco/difesa
+  già fittati da `PoissonCountModel` catturano implicitamente lo stesso
+  segnale, per cui la correzione aggiunge rumore, non informazione. `compute_
+  deep_completions_adjustment_factor` resta nel codice, testato, non
+  collegato a `count_market_estimates.py`.
 - **Intelligence Engine — solo il livello di validazione, non un generatore
   di segnali**: `app/engine/intelligence/validation.py` confronta
   un'ipotesi qualitativa (`IntelligenceSignal`, es. "pressing più aggressivo

@@ -1,5 +1,9 @@
-"""xG-based correction to Dixon-Coles' expected goals (MODEL_SPEC.md /
-ROADMAP.md — "collega le TacticalFeature al Decision Engine").
+"""Corrections to a statistical model's raw expected counts, derived from
+real `TacticalFeature` data (MODEL_SPEC.md / ROADMAP.md — "collega le
+TacticalFeature al Decision Engine"). Two independent corrections live here:
+`compute_xg_adjustment_factor` for Dixon-Coles' goal expectation, and
+`compute_deep_completions_adjustment_factor` for `PoissonCountModel`'s corner
+expectation — both feed into the same `apply_tactical_adjustment`.
 
 **The idea, stated precisely, not just asserted**: Dixon-Coles fits
 attack/defense strength from actual goals scored/conceded. Actual goals are
@@ -108,9 +112,62 @@ def _actual_goals_for_team_on_date(db: Session, team_id: int, match_date: date) 
 def apply_tactical_adjustment(
     lam: float, mu: float, home_factor: float | None, away_factor: float | None
 ) -> tuple[float, float]:
-    """Multiplies Dixon-Coles' raw expected goals by each team's xG adjustment
-    factor, leaving a side unmodified when its factor is `None` (not enough
-    data for that team/period — see module docstring)."""
+    """Multiplies a model's raw expected count (Dixon-Coles' goals or
+    PoissonCountModel's corners) by each team's adjustment factor, leaving a
+    side unmodified when its factor is `None` (not enough data for that
+    team/period — see module docstring)."""
     adjusted_lam = lam * home_factor if home_factor is not None else lam
     adjusted_mu = mu * away_factor if away_factor is not None else mu
     return adjusted_lam, adjusted_mu
+
+
+def compute_deep_completions_adjustment_factor(
+    db: Session, team_id: int, as_of: date, min_matches: int = MIN_MATCHES_FOR_FACTOR
+) -> float | None:
+    """Correction factor for `PoissonCountModel`'s corner-count expectation,
+    from `TacticalFeature` "deep" (deep completions — passes completed near
+    the opponent's goal). Checked against real data before building this (see
+    BACKTEST_SPEC.md "PPDA/deep completions vs corners"): deep completions
+    correlate with actual corners won (Pearson r=+0.45 on the 2023/24
+    EPL+Serie A data this project has), a real signal, not assumed.
+
+    Ratio of this team's mean deep completions (strictly prior matches only)
+    to the *league-wide* mean deep completions over the same prior-only
+    window (mixing EPL+Serie A — a simplification, not per-competition; see
+    BACKTEST_SPEC.md for why this was not refined further) — a team creating
+    20% more deep attacking buildup than a typical team recently is
+    hypothesized to win proportionally more corners. `None` (never a guessed
+    1.0) when either this team or the league-wide baseline has fewer than
+    `min_matches` prior observations, or the league mean is zero.
+    """
+    team_values = list(
+        db.scalars(
+            select(TacticalFeature.value).where(
+                TacticalFeature.team_id == team_id,
+                TacticalFeature.feature_name == "deep",
+                TacticalFeature.as_of_date < as_of,
+            )
+        )
+    )
+    if len(team_values) < min_matches:
+        return None
+
+    league_values = list(
+        db.scalars(
+            select(TacticalFeature.value).where(
+                TacticalFeature.feature_name == "deep",
+                TacticalFeature.as_of_date < as_of,
+            )
+        )
+    )
+    if len(league_values) < min_matches:
+        return None
+
+    league_mean = sum(league_values) / len(league_values)
+    if league_mean == 0:
+        return None
+
+    team_mean = sum(team_values) / len(team_values)
+    factor = team_mean / league_mean
+    low, high = FACTOR_CLIP_RANGE
+    return max(low, min(high, factor))
