@@ -13,10 +13,10 @@ from app.schemas.analysis import (
     BatchAnalyzeRequest,
     BatchRefreshItemOut,
     BatchRefreshResultOut,
-    CountEstimateOut,
     MatchDetailOut,
     MatchSummaryOut,
     MatchTableRowOut,
+    NoOddsEstimateOut,
     RefreshResultOut,
     RiskLevelOut,
     SelectionOut,
@@ -54,10 +54,15 @@ def _selection_out(db: Session, prediction: Prediction, rationale: str) -> Selec
     )
 
 
-def _count_estimates_out(db: Session, analysis_version_id: int) -> list[CountEstimateOut]:
-    """CORNERS/CARDS Prediction rows have bookmaker_odds=None by construction
-    (see count_market_estimates.py) — that's exactly how we identify them here,
-    rather than a separate flag."""
+def _no_odds_estimates_out(db: Session, analysis_version_id: int) -> list[NoOddsEstimateOut]:
+    """Every Prediction row with `bookmaker_odds=None` (by construction — see
+    `analysis_runner._build_candidates_and_predictions` and
+    `_persist_count_market_estimate`) is a market outcome with no real quote
+    to compute value/risk against: CORNERS/CARDS (no odds source integrated
+    for these markets at all) as well as MATCH_RESULT/TOTAL_GOALS whenever
+    the live odds provider had no liquid quote for that specific outcome.
+    One row per outcome (never paired OVER/UNDER only), so this also covers
+    MATCH_RESULT's three HOME/DRAW/AWAY outcomes correctly."""
     predictions = db.scalars(
         select(Prediction).where(
             Prediction.analysis_version_id == analysis_version_id,
@@ -65,30 +70,19 @@ def _count_estimates_out(db: Session, analysis_version_id: int) -> list[CountEst
         )
     ).all()
 
-    by_market: dict[int, list[Prediction]] = {}
+    out = []
     for pred in predictions:
         outcome = db.get(MarketOutcome, pred.market_outcome_id)
-        by_market.setdefault(outcome.market_id, []).append(pred)
-
-    out = []
-    for market_id, preds in by_market.items():
-        market = db.get(Market, market_id)
-        over_pred = next(
-            p for p in preds if db.get(MarketOutcome, p.market_outcome_id).code == "OVER"
-        )
-        under_pred = next(
-            p for p in preds if db.get(MarketOutcome, p.market_outcome_id).code == "UNDER"
-        )
+        market = db.get(Market, outcome.market_id)
         category = market.category.value if hasattr(market.category, "value") else market.category
         out.append(
-            CountEstimateOut(
+            NoOddsEstimateOut(
                 market_category=category,
                 market_label=market.label,
+                outcome_label=outcome.code,
                 line=market.line,
-                probability_over=over_pred.probability,
-                probability_under=under_pred.probability,
-                fair_odds_over=over_pred.fair_odds,
-                fair_odds_under=under_pred.fair_odds,
+                probability=pred.probability,
+                fair_odds=pred.fair_odds,
                 note=NO_ODDS_NOTE,
             )
         )
@@ -199,7 +193,7 @@ def get_match_detail(match_id: int, db: Session = Depends(get_db)):
         analysis_version_id=analysis_version.id,
         computed_at=analysis_version.computed_at,
         risk_levels=risk_levels_out,
-        additional_estimates=_count_estimates_out(db, analysis_version.id),
+        additional_estimates=_no_odds_estimates_out(db, analysis_version.id),
     )
 
 

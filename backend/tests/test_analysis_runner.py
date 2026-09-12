@@ -165,6 +165,81 @@ def test_run_analysis_fetches_live_odds_for_a_scheduled_fixture(db_session):
     assert {o.bookmaker for o in odds} == {"Betfair"}
 
 
+def test_run_analysis_shows_nd_for_market_with_no_liquid_quote(db_session):
+    """Core "never skip a row" behavior: when the live odds provider has a
+    quote for MATCH_RESULT but nothing for TOTAL_GOALS (a very plausible
+    real Betfair situation — 1X2 markets open earlier than O/U), TOTAL_GOALS
+    must still show up with its model probability/fair-odds — as a
+    Prediction with bookmaker_odds=None/value=None (n/d), never silently
+    absent and never a fabricated price."""
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    home = get_or_create_team(db_session, "Synth A")
+    away = get_or_create_team(db_session, "Synth B")
+    future_match = Match(
+        season_id=season.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_utc=last_kickoff + timedelta(days=7),
+        status=MatchStatus.SCHEDULED,
+        external_ref="synth:future:partial-odds",
+    )
+    db_session.add(future_match)
+    db_session.flush()
+
+    now = last_kickoff + timedelta(days=6)
+    provider = _FakeLiveOddsProvider(
+        [
+            OddsQuoteRecord("Betfair", "1X2", "HOME", 2.0, now, is_closing=False),
+            OddsQuoteRecord("Betfair", "1X2", "DRAW", 3.3, now, is_closing=False),
+            OddsQuoteRecord("Betfair", "1X2", "AWAY", 3.8, now, is_closing=False),
+            # No OVER/UNDER quotes at all — Betfair has no O/U market yet.
+        ]
+    )
+
+    result = run_analysis_for_match(db_session, future_match.id, odds_provider=provider)
+    db_session.flush()
+
+    # MATCH_RESULT got real candidates — all 10 risk levels still populated.
+    assert len(result.risk_levels) == 10
+
+    analysis_version = db_session.scalar(
+        select(AnalysisVersion).where(AnalysisVersion.match_id == future_match.id)
+    )
+    nd_predictions = db_session.scalars(
+        select(Prediction).where(
+            Prediction.analysis_version_id == analysis_version.id,
+            Prediction.bookmaker_odds.is_(None),
+        )
+    ).all()
+    nd_by_outcome = {}
+    for pred in nd_predictions:
+        outcome = db_session.get(MarketOutcome, pred.market_outcome_id)
+        nd_by_outcome[outcome.code] = pred
+
+    assert set(nd_by_outcome) == {"OVER", "UNDER"}
+    for pred in nd_by_outcome.values():
+        assert pred.bookmaker_odds is None
+        assert pred.bookmaker_name is None
+        assert pred.value is None
+        assert pred.probability is not None  # model estimate still computed
+        assert pred.fair_odds == pytest.approx(1.0 / pred.probability)
+
+    # Never enters the risk ladder (no RiskSelection for the n/d predictions).
+    nd_prediction_ids = {p.id for p in nd_predictions}
+    risk_selection_prediction_ids = {
+        rs.prediction_id
+        for rs in db_session.scalars(
+            select(RiskSelection).where(RiskSelection.analysis_version_id == analysis_version.id)
+        ).all()
+    }
+    assert nd_prediction_ids.isdisjoint(risk_selection_prediction_ids)
+
+
 def test_run_analysis_survives_live_odds_provider_failure(db_session):
     """A provider raising (network down, bad response) must never abort the
     whole analysis — it degrades to whatever OddsQuote rows already exist

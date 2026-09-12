@@ -47,6 +47,13 @@ MARKET_LABELS = {
     "CORNERS": "Over/Under corner totali",
     "CARDS": "Over/Under cartellini totali",
 }
+OUTCOME_LABELS = {
+    ("MATCH_RESULT", "HOME"): "Home win",
+    ("MATCH_RESULT", "DRAW"): "Draw",
+    ("MATCH_RESULT", "AWAY"): "Away win",
+    ("TOTAL_GOALS", "OVER"): "Over 2.5",
+    ("TOTAL_GOALS", "UNDER"): "Under 2.5",
+}
 MIN_TRAINING_MATCHES = 40
 
 
@@ -243,6 +250,32 @@ def _get_or_create_count_model_version(
     return mv
 
 
+def _get_or_create_market(
+    db: Session, match: Match, category: MarketCategory, label: str, line: float | None = None
+) -> Market:
+    market = db.scalar(
+        select(Market).where(Market.match_id == match.id, Market.category == category)
+    )
+    if market is None:
+        market = Market(match_id=match.id, category=category, label=label, line=line)
+        db.add(market)
+        db.flush()
+    elif line is not None:
+        market.line = line
+    return market
+
+
+def _get_or_create_outcome(db: Session, market: Market, code: str, label: str) -> MarketOutcome:
+    outcome = db.scalar(
+        select(MarketOutcome).where(MarketOutcome.market_id == market.id, MarketOutcome.code == code)
+    )
+    if outcome is None:
+        outcome = MarketOutcome(market_id=market.id, code=code, label=label)
+        db.add(outcome)
+        db.flush()
+    return outcome
+
+
 def _persist_count_market_estimate(
     db: Session,
     match: Match,
@@ -255,29 +288,13 @@ def _persist_count_market_estimate(
     `Candidate`/RiskSelection, since those require a real price (see
     count_market_estimates.py docstring)."""
     category = MarketCategory[estimate.market_category]
-    market = db.scalar(
-        select(Market).where(Market.match_id == match.id, Market.category == category)
+    market = _get_or_create_market(
+        db, match, category, MARKET_LABELS[estimate.market_category], line=estimate.line
     )
-    if market is None:
-        market = Market(
-            match_id=match.id,
-            category=category,
-            label=MARKET_LABELS[estimate.market_category],
-            line=estimate.line,
-        )
-        db.add(market)
-        db.flush()
-
-    outcomes = {}
-    for code, label in (("OVER", f"Over {estimate.line}"), ("UNDER", f"Under {estimate.line}")):
-        outcome = db.scalar(
-            select(MarketOutcome).where(MarketOutcome.market_id == market.id, MarketOutcome.code == code)
-        )
-        if outcome is None:
-            outcome = MarketOutcome(market_id=market.id, code=code, label=label)
-            db.add(outcome)
-            db.flush()
-        outcomes[code] = outcome
+    outcomes = {
+        code: _get_or_create_outcome(db, market, code, f"{code.title()} {estimate.line}")
+        for code in ("OVER", "UNDER")
+    }
 
     uncertainty = max(0.0, 1.0 - min(estimate.n_training_matches, 300) / 300)
     for code, probability in (("OVER", estimate.probability_over), ("UNDER", estimate.probability_under)):
@@ -372,98 +389,127 @@ def _build_candidates_and_predictions(
         ("TOTAL_GOALS", "UNDER"): total_goals_probs["UNDER"],
     }
 
-    markets = db.scalars(select(Market).where(Market.match_id == match.id)).all()
-
     candidates: list[Candidate] = []
     predictions: dict[str, Prediction] = {}
 
-    for market in markets:
-        category = market.category.value if hasattr(market.category, "value") else market.category
-        if category not in ("MATCH_RESULT", "TOTAL_GOALS"):
-            continue
-        outcomes = db.scalars(select(MarketOutcome).where(MarketOutcome.market_id == market.id)).all()
-        for outcome in outcomes:
-            key = (category, outcome.code)
-            if key not in prob_by_category_code:
-                continue
-            odds_quote = db.scalar(
-                select(OddsQuote)
-                .where(OddsQuote.market_outcome_id == outcome.id)
-                .order_by(OddsQuote.captured_at.desc())
-            )
-            if odds_quote is None:
-                continue
+    # Get-or-create the Market/MarketOutcome scaffold for both markets rather
+    # than only looking at whatever rows already happen to exist: a model
+    # probability is always computable from the fitted Dixon-Coles model
+    # regardless of whether any OddsQuote has ever been ingested for this
+    # match, so every outcome below always gets a Prediction — never a
+    # silently-missing row (see the odds_quote is None branch).
+    market_by_category = {
+        "MATCH_RESULT": _get_or_create_market(
+            db, match, MarketCategory.MATCH_RESULT, MARKET_LABELS["MATCH_RESULT"]
+        ),
+        "TOTAL_GOALS": _get_or_create_market(
+            db, match, MarketCategory.TOTAL_GOALS, MARKET_LABELS["TOTAL_GOALS"], line=2.5
+        ),
+    }
 
-            probability = prob_by_category_code[key]
-            fair = 1.0 / probability
-            value = expected_value(probability, odds_quote.decimal_odds)
-            disc = discrepancy_pct(probability, odds_quote.decimal_odds)
-            alert_level = classify_alert(disc)
+    for (category, code), probability in prob_by_category_code.items():
+        market = market_by_category[category]
+        outcome = _get_or_create_outcome(db, market, code, OUTCOME_LABELS[(category, code)])
 
-            reliability_estimate = model_reliability_for(
-                db, ModelFamily.DIXON_COLES_POISSON, category, competition_id, probability
-            )
-            # Fail-conservative when the backtest evidence doesn't support a
-            # confident estimate (see reliability.py docstring): 0.0 is the
-            # worst-case reliability, maximizing this factor's risk
-            # contribution rather than either (a) pretending 0.5-neutral like
-            # the placeholder this replaces, or (b) hiding the candidate from
-            # the ladder entirely — a market with a real quoted price and EV
-            # stays visible to the user, just correctly flagged as higher risk.
-            model_reliability = (
-                reliability_estimate.value if reliability_estimate.value is not None else 0.0
-            )
-
-            factors = RiskFactors(
-                probability=probability,
-                bookmaker_odds=odds_quote.decimal_odds,
-                uncertainty=uncertainty,
-                data_quality=1.0,
-                model_reliability=model_reliability,
-                prediction_stability=1.0,
-                lineup_dependency=0.0,
-            )
-            candidate = Candidate(
-                market_outcome_key=f"{category}:{outcome.code}",
-                market_category=category,
-                market_label=MARKET_LABELS.get(category, category),
-                outcome_label=outcome.code,
-                probability=probability,
-                bookmaker_odds=odds_quote.decimal_odds,
-                fair_odds_value=fair,
-                risk_factors=factors,
-            )
-            candidates.append(candidate)
-
-            prediction = Prediction(
-                analysis_version_id=analysis_version.id,
-                market_outcome_id=outcome.id,
-                model_version_id=model_version.id,
-                probability=probability,
-                fair_odds=fair,
-                bookmaker_odds=odds_quote.decimal_odds,
-                bookmaker_name=odds_quote.bookmaker,
-                value=value,
-                uncertainty=uncertainty,
-                confidence=1.0 - uncertainty,
-            )
-            db.add(prediction)
-            db.flush()
-            predictions[candidate.market_outcome_key] = prediction
-
-            if alert_level != AlertLevel.NONE:
-                db.add(
-                    Alert(
-                        prediction_id=prediction.id,
-                        level=alert_level,
-                        discrepancy_pct=disc,
-                        explanation=(
-                            f"{MARKET_LABELS.get(category, category)} {outcome.code}: "
-                            f"probabilità modello {probability:.1%} vs probabilità "
-                            f"implicita mercato {1 / odds_quote.decimal_odds:.1%}."
-                        ),
-                    )
+        fair = 1.0 / probability
+        odds_quote = db.scalar(
+            select(OddsQuote)
+            .where(OddsQuote.market_outcome_id == outcome.id)
+            .order_by(OddsQuote.captured_at.desc())
+        )
+        if odds_quote is None:
+            # No liquid quote from any configured source (see
+            # BetfairExchangeOddsProvider/FallbackOddsProvider) for this
+            # outcome — persist the model's own probability/fair-odds
+            # estimate anyway (never skip the row), but never a
+            # Candidate/RiskSelection: those require a real market price for
+            # value/risk. Same "n/d" treatment already given to CORNERS/CARDS
+            # in count_market_estimates.py — Value/Alert stay explicitly
+            # unavailable, never a guessed number.
+            db.add(
+                Prediction(
+                    analysis_version_id=analysis_version.id,
+                    market_outcome_id=outcome.id,
+                    model_version_id=model_version.id,
+                    probability=probability,
+                    fair_odds=fair,
+                    bookmaker_odds=None,
+                    bookmaker_name=None,
+                    value=None,
+                    uncertainty=uncertainty,
+                    confidence=1.0 - uncertainty,
                 )
+            )
+            continue
+
+        value = expected_value(probability, odds_quote.decimal_odds)
+        disc = discrepancy_pct(probability, odds_quote.decimal_odds)
+        alert_level = classify_alert(disc)
+
+        reliability_estimate = model_reliability_for(
+            db, ModelFamily.DIXON_COLES_POISSON, category, competition_id, probability
+        )
+        # Fail-conservative when the backtest evidence doesn't support a
+        # confident estimate (see reliability.py docstring): 0.0 is the
+        # worst-case reliability, maximizing this factor's risk
+        # contribution rather than either (a) pretending 0.5-neutral like
+        # the placeholder this replaces, or (b) hiding the candidate from
+        # the ladder entirely — a market with a real quoted price and EV
+        # stays visible to the user, just correctly flagged as higher risk.
+        model_reliability = (
+            reliability_estimate.value if reliability_estimate.value is not None else 0.0
+        )
+
+        factors = RiskFactors(
+            probability=probability,
+            bookmaker_odds=odds_quote.decimal_odds,
+            uncertainty=uncertainty,
+            data_quality=1.0,
+            model_reliability=model_reliability,
+            prediction_stability=1.0,
+            lineup_dependency=0.0,
+        )
+        candidate = Candidate(
+            market_outcome_key=f"{category}:{code}",
+            market_category=category,
+            market_label=MARKET_LABELS.get(category, category),
+            outcome_label=code,
+            probability=probability,
+            bookmaker_odds=odds_quote.decimal_odds,
+            fair_odds_value=fair,
+            risk_factors=factors,
+        )
+        candidates.append(candidate)
+
+        prediction = Prediction(
+            analysis_version_id=analysis_version.id,
+            market_outcome_id=outcome.id,
+            model_version_id=model_version.id,
+            probability=probability,
+            fair_odds=fair,
+            bookmaker_odds=odds_quote.decimal_odds,
+            bookmaker_name=odds_quote.bookmaker,
+            value=value,
+            uncertainty=uncertainty,
+            confidence=1.0 - uncertainty,
+        )
+        db.add(prediction)
+        db.flush()
+        predictions[candidate.market_outcome_key] = prediction
+
+        if alert_level != AlertLevel.NONE:
+            db.add(
+                Alert(
+                    prediction_id=prediction.id,
+                    level=alert_level,
+                    discrepancy_pct=disc,
+                    explanation=(
+                        f"{MARKET_LABELS.get(category, category)} {code}: "
+                        f"probabilità modello {probability:.1%} vs probabilità "
+                        f"implicita mercato {1 / odds_quote.decimal_odds:.1%}."
+                    ),
+                )
+            )
 
     return candidates, predictions
 

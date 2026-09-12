@@ -132,3 +132,72 @@ def test_batch_analyze_reports_error_for_unknown_match_id_without_failing_batch(
     assert body["succeeded"] == 1
     error_item = next(item for item in body["results"] if item["match_id"] == bad_id)
     assert error_item["status"] == "error"
+
+
+def test_match_detail_exposes_nd_estimates_for_markets_without_a_quote(db_session):
+    """API-level check that additional_estimates carries the generalized
+    "n/d" shape (one row per outcome, MATCH_RESULT included, not just
+    CORNERS/CARDS's OVER/UNDER pair). Sets up the analysis directly via
+    run_analysis_for_match (never through the HTTP /analyze endpoint, which
+    would default to the real Betfair provider chain and attempt a live
+    network call this test suite must never make) — only the read path
+    (`GET /matches/{id}`) goes through the actual FastAPI router/serialization.
+    """
+    from datetime import timedelta
+
+    from app.engine.decision.analysis_runner import run_analysis_for_match
+    from app.ingestion.match_ingestion import get_or_create_season, get_or_create_team
+    from app.models.enums import MatchStatus
+    from app.models.match import Match
+    from app.providers.base.dto import OddsQuoteRecord
+
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+
+    from app.ingestion.match_ingestion import get_or_create_competition
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    home = get_or_create_team(db_session, "API A")
+    away = get_or_create_team(db_session, "API B")
+    future_match = Match(
+        season_id=season.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_utc=last_kickoff + timedelta(days=7),
+        status=MatchStatus.SCHEDULED,
+        external_ref="api-synth:future:nd",
+    )
+    db_session.add(future_match)
+    db_session.flush()
+
+    class _FakeProvider:
+        def is_available(self):
+            return True
+
+        def get_odds_for_match(self, home_team_name, away_team_name, kickoff_utc_iso):
+            now = last_kickoff + timedelta(days=6)
+            return [
+                OddsQuoteRecord("Betfair", "1X2", "HOME", 2.0, now, is_closing=False),
+                OddsQuoteRecord("Betfair", "1X2", "DRAW", 3.3, now, is_closing=False),
+                OddsQuoteRecord("Betfair", "1X2", "AWAY", 3.8, now, is_closing=False),
+            ]
+
+    run_analysis_for_match(db_session, future_match.id, odds_provider=_FakeProvider())
+    db_session.commit()
+
+    client = _client(db_session)
+    resp = client.get(f"/matches/{future_match.id}")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert len(body["risk_levels"]) == 10  # MATCH_RESULT candidates fill the whole ladder
+
+    nd = body["additional_estimates"]
+    outcomes = {(e["market_category"], e["outcome_label"]) for e in nd}
+    assert outcomes == {("TOTAL_GOALS", "OVER"), ("TOTAL_GOALS", "UNDER")}
+    for estimate in nd:
+        assert estimate["probability"] > 0
+        assert estimate["fair_odds"] > 0
+        assert estimate["note"]  # explains why Value/Alert are n/d

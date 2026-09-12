@@ -25,14 +25,13 @@ export interface RiskLevelOut {
   alternatives: SelectionOut[];
 }
 
-export interface CountEstimateOut {
+export interface NoOddsEstimateOut {
   market_category: string;
   market_label: string;
-  line: number;
-  probability_over: number;
-  probability_under: number;
-  fair_odds_over: number;
-  fair_odds_under: number;
+  outcome_label: string;
+  line: number | null;
+  probability: number;
+  fair_odds: number;
   note: string;
 }
 
@@ -50,7 +49,7 @@ export interface MatchDetailOut extends MatchSummaryOut {
   analysis_version_id: number | null;
   computed_at: string | null;
   risk_levels: RiskLevelOut[];
-  additional_estimates: CountEstimateOut[];
+  additional_estimates: NoOddsEstimateOut[];
 }
 
 export interface MatchTableRowOut {

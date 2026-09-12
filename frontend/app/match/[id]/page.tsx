@@ -114,20 +114,30 @@ export default function MatchDetailPage() {
 
       {match.additional_estimates.length > 0 && (
         <>
-          <h2 style={{ fontSize: 14, marginTop: 24 }}>Stime aggiuntive (senza quota di mercato)</h2>
-          {match.additional_estimates.map((est) => (
-            <div className="detail-card" key={est.market_category}>
+          <h2 style={{ fontSize: 14, marginTop: 24 }}>Stime senza quota reale (Value/Alert: n/d)</h2>
+          {Object.entries(
+            match.additional_estimates.reduce<Record<string, typeof match.additional_estimates>>(
+              (acc, est) => {
+                const key = `${est.market_category}:${est.line ?? ""}`;
+                (acc[key] ??= []).push(est);
+                return acc;
+              },
+              {}
+            )
+          ).map(([key, ests]) => (
+            <div className="detail-card" key={key}>
               <div style={{ fontSize: 16, fontWeight: 700, margin: "4px 0" }}>
-                {est.market_label} (linea {est.line})
+                {ests[0].market_label}
+                {ests[0].line != null ? ` (linea ${ests[0].line})` : ""}
               </div>
-              <div>
-                Over: {(est.probability_over * 100).toFixed(1)}% (quota fair {est.fair_odds_over.toFixed(2)})
-              </div>
-              <div>
-                Under: {(est.probability_under * 100).toFixed(1)}% (quota fair {est.fair_odds_under.toFixed(2)})
-              </div>
+              {ests.map((est) => (
+                <div key={est.outcome_label}>
+                  {est.outcome_label}: {(est.probability * 100).toFixed(1)}% (quota fair{" "}
+                  {est.fair_odds.toFixed(2)}) — Value/Alert: <strong>n/d</strong>
+                </div>
+              ))}
               <p className="muted" style={{ fontStyle: "italic" }}>
-                {est.note}
+                {ests[0].note}
               </p>
             </div>
           ))}

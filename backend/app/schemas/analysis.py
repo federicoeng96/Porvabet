@@ -30,19 +30,23 @@ class RiskLevelOut(BaseModel):
     alternatives: list[SelectionOut]
 
 
-class CountEstimateOut(BaseModel):
-    """CORNERS/CARDS: probability-only estimate, no market odds available for
-    these markets in the currently integrated data sources — see
-    DATA_SOURCES.md. Never part of the risk ladder (no value/risk computable
-    without a real price)."""
+class NoOddsEstimateOut(BaseModel):
+    """A model probability/fair-odds estimate for a market outcome that
+    currently has no real bookmaker/exchange quote to compute value/risk
+    against — Value/Alert are explicitly "n/d" (never fabricated), and the
+    outcome never enters the risk ladder (`RiskLevelOut`), since that
+    requires a real price. One row per outcome — not a fixed OVER/UNDER
+    pair — so this covers both CORNERS/CARDS (no odds source at all for
+    these markets yet) and MATCH_RESULT/TOTAL_GOALS on a fixture where the
+    live odds provider (e.g. Betfair) has no liquid quote yet (common days
+    before kickoff), never a row silently missing. See DATA_SOURCES.md."""
 
     market_category: str
     market_label: str
-    line: float
-    probability_over: float
-    probability_under: float
-    fair_odds_over: float
-    fair_odds_under: float
+    outcome_label: str
+    line: float | None
+    probability: float
+    fair_odds: float
     note: str
 
 
@@ -60,7 +64,7 @@ class MatchDetailOut(MatchSummaryOut):
     analysis_version_id: int | None
     computed_at: datetime | None
     risk_levels: list[RiskLevelOut]
-    additional_estimates: list[CountEstimateOut] = []
+    additional_estimates: list[NoOddsEstimateOut] = []
 
 
 class MatchTableRowOut(BaseModel):
