@@ -43,6 +43,10 @@ PowerShell già aperta (serve perché riconosca i nuovi programmi).
 
 ## Passo 2 — Setup (una volta sola)
 
+*Hai già clonato questo progetto in precedenza?* Esegui `git pull` prima di
+procedere, per essere sicuro di avere l'ultima versione degli script
+(alcuni problemi di setup.ps1 sono stati corretti dopo la prima versione).
+
 1. Scarica/clona questo progetto sul tuo computer, in una cartella a tua
    scelta (es. `C:\Porvabet`).
 2. Apri quella cartella in Esplora File, tieni premuto **Shift** e clicca
@@ -69,6 +73,12 @@ PowerShell già aperta (serve perché riconosca i nuovi programmi).
 Se qualcosa va storto, lo script stampa in rosso cosa non ha funzionato e
 cosa fare — leggi con calma il messaggio prima di richiedere aiuto, spesso
 dice esattamente il problema (vedi anche "Problemi comuni" più sotto).
+
+**Rilanciare `.\setup.ps1` più volte è del tutto normale e sicuro** (es. se
+il setup si è interrotto a metà, o vuoi solo essere sicuro che tutto sia a
+posto): lo script riconosce da solo cosa è già stato fatto (database già
+creati, ambiente virtuale già presente, ecc.) e salta quei passaggi senza
+generare errori — non serve "ripulire" nulla prima di rilanciarlo.
 
 ## Passo 2bis — Le tue chiavi (se non le hai ancora messe)
 

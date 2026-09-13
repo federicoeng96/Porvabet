@@ -646,3 +646,63 @@ completi — è un indice.
   tre le classi modello (24 test totali in `test_count_market_model.py`).
   `BACKTEST_SPEC.md`/`MODEL_SPEC.md`/`ROADMAP.md` aggiornati con la tabella
   completa. 255 test passano, lint pulito.
+- **Due bug reali in setup.ps1 trovati dall'utente durante il primo test
+  locale, corretti alla radice e verificati con un vero PostgreSQL (non solo
+  letti)**:
+  - **Encoding**: `setup.ps1`/`start.ps1` contenevano caratteri accentati
+    (è, à) e trattini lunghi (—) salvati come UTF-8 senza BOM — Windows
+    PowerShell 5.1 (a differenza di PowerShell 7+) non rileva UTF-8 senza
+    BOM e li interpreta con la code page ANSI di sistema di default,
+    corrompendo quei caratteri e causando errori di parsing. Corretto alla
+    radice invece di aggiungere un BOM (che dipende comunque da quale editor/
+    tool lo preserva): sostituiti tutti i caratteri non-ASCII con equivalenti
+    ASCII (`e'`, `gia'`, `-` — stesso stile già usato altrove in questi
+    stessi file). Verificato non con un'ispezione visiva ma per davvero:
+    installato PowerShell reale (`pwsh`) in questa sessione per fare un vero
+    parse AST dei due file (zero errori) e confermato via Python che UTF-8 e
+    Windows-1252 ora decodificano i file in modo byte-per-byte identico —
+    l'ambiguità di encoding che causava il bug non può più esistere,
+    indipendentemente dalla code page del sistema Windows dell'utente.
+    Aggiunto anche `.gitattributes` (mai esistito prima): fissa `eol=crlf`
+    per `.ps1` ed `eol=lf` per `.sh`, cosi' un clone Windows non rischia di
+    convertire gli script bash con terminatori di riga che ne romperebbero
+    la shebang line.
+  - **Non idempotente**: `setup.ps1`/`setup.sh` dichiaravano nei propri
+    commenti di essere "pensati per essere rieseguiti", ma la creazione di
+    ruolo/database PostgreSQL si basava sul testo dell'errore di ritorno
+    ("already exists" in inglese) — PostgreSQL pero' traduce i propri
+    messaggi nella lingua di sistema, quindi su un Windows in italiano il
+    messaggio reale e' diverso e il controllo falliva silenziosamente,
+    fermando l'intero script con un errore anche quando non c'era nulla di
+    rotto. Riprodotto il bug originale per davvero contro un vero
+    PostgreSQL in questa sessione (stesso testo d'errore inglese qui,
+    quindi non riproducibile byte-per-byte, ma la causa e' verificata:
+    PostgreSQL ha localizzazione NLS reale e la traduce di default in base
+    al locale del sistema operativo). Corretto eliminando la dipendenza dal
+    testo dell'errore del tutto: un unico script SQL (`DO` + `\gexec`)
+    controlla l'esistenza di ruolo/database tramite query di sistema
+    (`pg_roles`/`pg_database`, mai testo umano) prima di creare solo cio'
+    che manca — verificato che `\gexec` richiede un vero file di script
+    (`-f`), non funziona in modo affidabile passando piu' `-c` separati
+    (comportamento diverso da quanto documentato, scoperto testando contro
+    un vero PostgreSQL). Testato end-to-end con un vero PostgreSQL in
+    questa sessione, non solo letto: eseguito due volte di seguito (stato
+    "tutto gia' esistente", esattamente lo scenario del bug reale) — zero
+    errori, stesso messaggio di successo onesto. Verificato anche che il
+    percorso di errore genuino (password sbagliata) continua a fallire
+    correttamente con un messaggio chiaro. **Autocorrezione durante questo
+    stesso lavoro**: la prima versione di `setup.sh` aveva un bug nuovo,
+    introdotto qui — con `set -e` attivo, un'assegnazione semplice come
+    `VAR="$(comando_che_fallisce)"` termina lo script immediatamente senza
+    mai eseguire il controllo dell'errore successivo (comportamento reale
+    di bash, verificato con un test dedicato) — scoperto testando lo
+    scenario di password sbagliata prima di committare, corretto avvolgendo
+    la chiamata in `set +e`/`set -e`, e ri-testato per confermare che ora
+    raggiunge davvero il messaggio d'errore invece di uscire in silenzio.
+  - `start.ps1` verificato per lo stesso tipo di problemi: incontrata solo
+    la stessa questione di encoding (corretta); l'idempotenza era gia'
+    corretta per design (controllo della porta occupata prima di avviare
+    backend/frontend, mai un errore bloccante).
+  - `RUNNING_LOCALLY.md`: aggiunta una nota esplicita che rilanciare
+    `setup.ps1` piu' volte e' sicuro e normale, e un promemoria (`git pull`)
+    per chi ha gia' clonato il progetto prima di questa correzione.
