@@ -16,6 +16,7 @@ comment markers before parsing.
 """
 
 import re
+from io import StringIO
 
 import httpx
 import pandas as pd
@@ -52,7 +53,20 @@ class FbrefProvider(SportsDataProvider):
         response = self._client.get(url)
         response.raise_for_status()
         html = _COMMENT_PATTERN.sub("", response.text)
-        tables = pd.read_html(html, attrs={"id": table_id})
+        # `pandas.read_html` treats a bare `str` as a filepath/URL, not literal
+        # HTML — wrapping in StringIO is required for it to parse `html` directly
+        # (found via this session's own test coverage work, not a hypothetical).
+        # `flavor="lxml"` is pinned explicitly: with no match for `attrs`, an
+        # unpinned flavor falls back to html5lib/bs4 (not installed) and raises
+        # a confusing ImportError instead of the clean "no tables found" case
+        # this method already handles below.
+        try:
+            tables = pd.read_html(StringIO(html), attrs={"id": table_id}, flavor="lxml")
+        except ValueError as exc:
+            # pandas itself raises "No tables found matching regex..." (rather
+            # than returning []) when `attrs` matches nothing — re-raised here
+            # with the table_id/url this method's caller actually needs to debug.
+            raise ValueError(f"Table id={table_id!r} not found at {url}") from exc
         if not tables:
             raise ValueError(f"Table id={table_id!r} not found at {url}")
         return tables[0]

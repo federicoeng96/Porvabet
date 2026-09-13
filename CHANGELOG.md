@@ -450,3 +450,50 @@ completi — è un indice.
   PowerShell bloccata, porta già occupata, password Postgres sbagliata,
   servizio Postgres non avviato, versione Python sbagliata, comando non
   riconosciuto, pagina vuota dopo "AGGIORNA ANALISI").
+- **Audit qualità: copertura test — colmati i gap reali, non solo
+  documentati**. Generato un report di copertura reale (`pytest-cov`, ora
+  anche dipendenza dev dichiarata in `pyproject.toml`): partiva da 86% totale
+  su 187 test. Classificati tutti i file a copertura 0%/parziale in due
+  categorie — stub deliberatamente non implementati (eplay24, legaseriea,
+  probable_lineups: già decisioni esplicite di sessioni precedenti per
+  rischio ToS, 0% atteso e accettato) vs. codice reale mai testato. Per la
+  seconda categoria:
+  - `lineup_reconciliation.py` (0% → 100%): logica di decisione reale (non
+    un provider) che alimenta `RiskFactors.data_quality`/
+    `Candidate.lineup_conflict` — 6 nuovi test coprono tutti e 5 i rami
+    (lineup ufficiale, nessuna fonte probabile, una sola fonte, fonti
+    concordi, fonti in conflitto).
+  - `rate_limiter.py` (68% → 100%): 3 nuovi test, incluso il ramo di blocco
+    reale (`time.sleep`) con finestre minuscole per restare veloci.
+  - `db/session.py` (64% → 100%): 2 nuovi test — il resto della suite
+    sovrascrive sempre `get_db` con una sessione di test, quindi il generator
+    reale (yield/finally/close) non veniva mai eseguito davvero.
+  - `api/routers/matches.py` (69% → 98%): 7 nuovi test — `GET /matches`
+    (mai testato: lista, validazione risk_level), 404 su match sconosciuto,
+    dettaglio senza alcuna analisi, `POST /matches/{id}/analyze` (successo,
+    422 dati insufficienti, 404) con la odds-provider chain mockata per non
+    tentare mai un vero login Betfair (questa sandbox ha credenziali reali in
+    `.env`), e il caso `additional_estimates` con stime CORNERS/CARDS reali.
+  - 4 provider reali ma mai testati, ora coperti con
+    `httpx.MockTransport` (stesso pattern di `test_understat_provider.py`):
+    `open_meteo` (100%), `rss_news` (95%), `api_football` (100%), `fbref`
+    (97%). Scrivere i test per `fbref` ha scoperto un bug reale e non
+    ipotetico, non un problema del test: `pandas.read_html` su questa
+    versione di pandas tratta una stringa HTML letterale come percorso file
+    e fallisce con `FileNotFoundError` a meno di incapsularla in
+    `io.StringIO` — corretto in `fbref/provider.py`, con `flavor="lxml"`
+    fissato esplicitamente per evitare un fallback implicito a html5lib (non
+    installato) quando una tabella non viene trovata. `lxml` era inoltre
+    assente come dipendenza dichiarata pur essendo necessario a runtime per
+    `pandas.read_html`: aggiunto a `pyproject.toml`. Il provider fbref era
+    quindi, prima di questa correzione, completamente non funzionante in
+    questo stesso ambiente installato — scoperto solo scrivendo i test, non
+    da un problema segnalato dall'utente.
+  - `source_registry.py` (0% → 100%): 4 test di coerenza sui dati statici
+    (chiavi uniche, nome/note non vuoti, categoria enum valida) — guardia
+    contro un typo/duplicato silenzioso, non logica da esercitare.
+  Risultato: 187 → 240 test, copertura totale 86% → 95%. Gap residui
+  onestamente non chiusi (nessuno riguarda codice reale non testato):
+  due `continue` difensivi in `matches.py` (righe 141/188, scenari di ladder
+  incompleta mai prodotti dalla pipeline attuale) e gli stub C-category già
+  citati sopra. Lint pulito su tutti i file toccati.
