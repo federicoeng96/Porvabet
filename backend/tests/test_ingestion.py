@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.ingestion.match_ingestion import (
+    FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES,
     canonicalize_team_name,
     get_or_create_competition,
     get_or_create_season,
@@ -14,6 +15,7 @@ from app.ingestion.match_ingestion import (
     ingest_historical_match,
     ingest_live_odds_quotes,
     ingest_upcoming_fixture,
+    resolve_or_create_team,
     resolve_understat_team_name,
 )
 from app.models.enums import MatchStatus
@@ -272,6 +274,48 @@ def test_ingest_live_odds_quotes_skips_unrecognized_outcome_codes(db_session):
     assert written == 0
     markets = db_session.scalars(select(Market).where(Market.match_id == match.id)).all()
     assert markets == []
+
+
+def test_resolve_or_create_team_uses_alias_map_to_avoid_duplicate(db_session):
+    # Real bug found this session: football-data.org returns "Manchester
+    # United FC", football-data.co.uk (already ingested) has "Man United" —
+    # without the alias, ingest_upcoming_fixture silently created a second,
+    # duplicate Team row for the same club.
+    existing = get_or_create_team(db_session, "Man United")
+    db_session.flush()
+
+    resolved = resolve_or_create_team(db_session, "Manchester United FC", FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES)
+    assert resolved.id == existing.id
+
+
+def test_resolve_or_create_team_creates_new_team_for_genuinely_new_club(db_session):
+    # A club with no alias entry and no pre-existing row (e.g. freshly
+    # promoted, never seen in previously-ingested data) must still get a
+    # real Team row, not be dropped or forced onto an unrelated match.
+    resolved = resolve_or_create_team(db_session, "Coventry City FC", FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES)
+    db_session.flush()
+    assert resolved.name == "Coventry City FC"
+
+
+def test_ingest_upcoming_fixture_reuses_existing_team_via_football_data_org_alias(db_session):
+    existing_home = get_or_create_team(db_session, "Man United")
+    existing_away = get_or_create_team(db_session, "Man City")
+    db_session.flush()
+
+    record = UpcomingFixtureRecord(
+        competition_code="EPL",
+        season_label="2026/2027",
+        kickoff_utc=datetime(2026, 9, 20, 14, 0, tzinfo=UTC),
+        home_team_name="Manchester United FC",
+        away_team_name="Manchester City FC",
+        external_ref="football_data_org:900010",
+    )
+
+    match = ingest_upcoming_fixture(db_session, record)
+    db_session.flush()
+
+    assert match.home_team_id == existing_home.id
+    assert match.away_team_id == existing_away.id
 
 
 def test_ingest_upcoming_fixture_creates_scheduled_match(db_session):

@@ -320,3 +320,26 @@ completi — è un indice.
   aggiornati con il motivo reale del blocco. Nessun cambio di codice
   (solo documentazione + note del registry), 178 test passano, lint
   pulito.
+- **Trovata la causa reale del blocco `football-data.org` di più sessioni**:
+  la chiave era presente nell'ambiente fin dall'inizio, ma sotto il nome
+  `FOOTBALL_DATA_API_KEY` — il codice (via `pydantic-settings`) leggeva solo
+  `FOOTBALL_DATA_ORG_API_KEY`, un nome diverso di una sola parola
+  (`_ORG_`). Corretto in `app/config.py` con un `AliasChoices` che accetta
+  entrambi i nomi, mantenendo `_ORG_` come nome primario per continuare a
+  distinguere questa fonte (fixture live) da football-data.co.uk (CSV
+  storico) in tutto il resto del codice/documentazione.
+- **Prima ingestione reale di fixture future da football-data.org**
+  (`scripts/ingest_upcoming_fixtures.py`): 9 partite reali della prossima
+  giornata (EPL 3, Serie A 6) — inclusa esattamente la stessa classe di
+  problema già vista con Man City/Man United/Milan (nomi completi
+  football-data.org, es. "Manchester United FC", "FC Internazionale
+  Milano", "AS Roma") che senza correzione creava un `Team` duplicato per
+  ogni club già esistente da football-data.co.uk (16 duplicati su 18
+  squadre, confermato interrogando il DB prima/dopo). Aggiunta
+  `FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES` + `resolve_or_create_team` in
+  `app/ingestion/match_ingestion.py` (stesso pattern hand-curated di
+  `UNDERSTAT_TEAM_NAME_ALIASES`), rieseguita l'ingestione: tutte le 17
+  squadre già note ora si risolvono sulla riga `Team` esistente, solo
+  Coventry City (mai vista nelle 10 stagioni storiche EPL/Serie A
+  ingerite) crea una riga nuova, correttamente. 3 nuovi test dedicati,
+  181 test passano, lint pulito.

@@ -86,6 +86,44 @@ def resolve_understat_team_name(db: Session, understat_name: str) -> Team | None
     return db.scalar(select(Team).where(Team.canonical_key == canonicalize_team_name(candidate)))
 
 
+# Hand-verified against real data (this session): football-data.org's fixture
+# API uses each club's full registered name ("Manchester United FC", "FC
+# Internazionale Milano"), while football-data.co.uk — this project's primary,
+# already-ingested source — uses short common names ("Man United", "Inter").
+# Same pattern and same reasoning as UNDERSTAT_TEAM_NAME_ALIASES above (hand-
+# curated, not fuzzy-matched): confirmed live by ingesting a real next-matchday
+# fixture set and finding every non-newly-promoted club created a duplicate
+# `Team` row instead of reusing the existing one (e.g. "Manchester United FC"
+# id 71 next to the pre-existing "Man United" id 9) — see CHANGELOG.md/
+# VERIFICATION_LOG.md for the concrete before/after. Extend this map, the same
+# way UNDERSTAT_TEAM_NAME_ALIASES already gets extended, whenever a newly
+# promoted/relegated club or a fixture from a season not yet seen introduces
+# another mismatch.
+FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES: dict[str, str] = {
+    "Manchester United FC": "Man United",
+    "Manchester City FC": "Man City",
+    "Brighton & Hove Albion FC": "Brighton",
+    "Leeds United FC": "Leeds",
+    "Newcastle United FC": "Newcastle",
+    "Nottingham Forest FC": "Nott'm Forest",
+    "Wolverhampton Wanderers FC": "Wolves",
+    "West Bromwich Albion FC": "West Brom",
+    "US Lecce": "Lecce",
+    "AC Monza": "Monza",
+    "SSC Napoli": "Napoli",
+    "Bologna FC 1909": "Bologna",
+    "US Sassuolo Calcio": "Sassuolo",
+    "Juventus FC": "Juventus",
+    "Como 1907": "Como",
+    "Parma Calcio 1913": "Parma",
+    "Torino FC": "Torino",
+    "AS Roma": "Roma",
+    "FC Internazionale Milano": "Inter",
+    "Udinese Calcio": "Udinese",
+    "AC Milan": "Milan",
+}
+
+
 def get_or_create_team(db: Session, name: str) -> Team:
     key = canonicalize_team_name(name)
     team = db.scalar(select(Team).where(Team.canonical_key == key))
@@ -94,6 +132,22 @@ def get_or_create_team(db: Session, name: str) -> Team:
         db.add(team)
         db.flush()
     return team
+
+
+def resolve_or_create_team(db: Session, name: str, aliases: dict[str, str]) -> Team:
+    """Like `get_or_create_team`, but tries `aliases` first so a name from a
+    second provider (e.g. football-data.org) reuses the existing `Team` row
+    for a club already known under a different spelling, rather than creating
+    a silent duplicate. Falls back to `get_or_create_team` on the raw name
+    when there is no alias entry or the aliased name has no existing match —
+    which is the correct outcome for a genuinely new club (e.g. freshly
+    promoted, never seen in previously-ingested data), not an error."""
+    candidate = aliases.get(name)
+    if candidate is not None:
+        team = db.scalar(select(Team).where(Team.canonical_key == canonicalize_team_name(candidate)))
+        if team is not None:
+            return team
+    return get_or_create_team(db, name)
 
 
 def get_or_create_source(
@@ -177,8 +231,12 @@ def ingest_upcoming_fixture(db: Session, record: UpcomingFixtureRecord) -> Match
     overwrites a match that has since finished — see the guard below."""
     competition = get_or_create_competition(db, record.competition_code)
     season = get_or_create_season(db, competition, record.season_label)
-    home_team = get_or_create_team(db, record.home_team_name)
-    away_team = get_or_create_team(db, record.away_team_name)
+    # football-data.org names differ from football-data.co.uk's (this
+    # project's primary source, already ingested) — resolve via
+    # FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES to avoid a duplicate Team row for a
+    # club that already exists, same pattern as understat's team names above.
+    home_team = resolve_or_create_team(db, record.home_team_name, FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES)
+    away_team = resolve_or_create_team(db, record.away_team_name, FOOTBALL_DATA_ORG_TEAM_NAME_ALIASES)
 
     match = db.scalar(select(Match).where(Match.external_ref == record.external_ref))
     if match is None:

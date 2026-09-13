@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +16,18 @@ class Settings(BaseSettings):
     # user's own account, used only to fetch the next matchday's fixtures for
     # Premier League/Serie A. Absence means FootballDataOrgFixtureProvider
     # degrades to is_available()=False, never a fabricated fixture.
-    football_data_org_api_key: str | None = None
+    #
+    # Also accepts FOOTBALL_DATA_API_KEY (without "_ORG"): this exact naming
+    # mismatch was the real root cause of the key appearing "missing" across
+    # several sessions even after the user set it — the env var was present
+    # under the shorter name the whole time, but pydantic-settings only reads
+    # the field's own name by default. Kept as a fallback rather than renamed
+    # everywhere, since "_ORG" still matters to disambiguate from the
+    # unrelated football-data.co.uk CSV source used elsewhere in this project.
+    football_data_org_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("FOOTBALL_DATA_ORG_API_KEY", "FOOTBALL_DATA_API_KEY"),
+    )
 
     # Betfair Exchange (official API, personal account — see DATA_SOURCES.md).
     # `betfair_app_key` must be a Delayed (free) Application Key — this project
