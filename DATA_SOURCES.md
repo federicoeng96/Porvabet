@@ -96,7 +96,17 @@ e `app/ingestion/source_registry.py`):
   — quindi questi dati alimentano un modello di probabilità reale
   (`PoissonCountModel`, v. MODEL_SPEC.md) ma non un mercato con value/edge,
   per assenza strutturale di un prezzo di mercato, non per una scelta di
-  design.
+  design. **Ri-verificato dal vivo in una sessione successiva** (non solo
+  ricontrollato a memoria), scaricando un CSV reale e fresco
+  (`E0.csv`, stagione 2024/25, 120 colonne): l'elenco completo delle colonne
+  quota è `B365`/`BW`/`BF`/`PS`/`WH`/`1XB`/`Max`/`Avg`/`BFE` per 1X2 (e le
+  stesse con suffisso `C` per la chiusura), `>2.5`/`<2.5` per Over/Under gol,
+  `AH*` per l'handicap asiatico — **zero colonne quota per `HC`/`AC` (corner)
+  o `HY`/`AY`/`HR`/`AR` (cartellini)**, che restano solo conteggi grezzi
+  osservati. Conferma quindi, con un file effettivamente scaricato adesso e
+  non solo ricordato, che football-data.co.uk non è e non diventerà mai una
+  fonte di quote per questi due mercati — non è un limite temporaneo di
+  copertura, è la struttura stessa del formato CSV di questo fornitore.
 
 ### API-Football (api-football.com / api-sports.io)
 - **Cosa offre**: fixture, squadre, giocatori, formazioni, infortuni, statistiche —

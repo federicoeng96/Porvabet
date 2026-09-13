@@ -107,10 +107,13 @@ la somma di due Poisson indipendenti è essa stessa Poisson(λ+μ), quindi il
 mercato "totale partita" (es. Over/Under 9.5 corner) non richiede costruire
 una matrice congiunta come per i gol.
 
-**Limite strutturale, non implementativo**: football-data.co.uk (l'unica fonte
-di quote reali in questo progetto) **non pubblica quote per corner o
-cartellini** — solo 1X2, Over/Under 2.5 gol e handicap asiatico hanno colonne
-quota nel CSV (verificato contro lo schema colonne reale). Di conseguenza:
+**Limite strutturale, non implementativo**: **nessuna fonte di quote oggi
+integrata in questo progetto** pubblica prezzi per corner o cartellini —
+football-data.co.uk (solo 1X2, Over/Under 2.5 gol e handicap asiatico hanno
+colonne quota nel CSV, ri-verificato dal vivo su un file fresco 2024/25, v.
+DATA_SOURCES.md) e Betfair Exchange (indagine approfondita, non verificabile
+da questa sandbox se offra questi mercati, v. DATA_SOURCES.md) sono entrambe
+escluse per motivi diversi, non per la stessa causa. Di conseguenza:
 - Il modello produce una **probabilità reale**, stimata su dati storici reali
   (15.200 righe `TeamMatchStats`, 7.600 partite EPL+Serie A).
 - Ma **non esiste un prezzo di mercato con cui calcolare value/edge** per
