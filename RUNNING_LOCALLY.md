@@ -1,177 +1,205 @@
-# Eseguire Porvabet in locale
+# Eseguire Porvabet sul tuo computer
 
-## ✅ Chiave football-data.org: risolta, primo giro reale completato
+Questa guida è scritta per chi non ha mai usato un terminale prima. Segui i
+passi in ordine, uno alla volta — non serve capire cosa fa ogni comando,
+basta copiarlo ed eseguirlo.
 
-La chiave `FOOTBALL_DATA_ORG_API_KEY` è ora funzionante e il primo giro reale
-di ingestione + analisi è stato eseguito (13/09/2026) — risultato completo,
-incluso un problema architetturale reale scoperto in diretta, in
-**`VERIFICATION_LOG.md`**.
+**Perché serve farlo sul tuo computer e non da questa sessione**: l'ambiente
+in cui questo progetto viene sviluppato (una sandbox remota) non riesce a
+raggiungere Betfair — il suo indirizzo di rete viene bloccato (blocco
+geografico/anti-frode, verificato: stesso blocco sia con credenziali finte
+sia con le tue credenziali reali). Dal tuo computer, con una connessione
+internet normale, questo blocco non c'è — è così che hai già ottenuto la tua
+Delayed Application Key. Il resto del progetto (football-data.org, il
+database, il sito) funziona invece anche da dentro la sandbox, ed è già
+stato verificato lì con dati reali (vedi `VERIFICATION_LOG.md`).
 
-Nota per chi guarda l'ambiente in futuro: la causa del "chiave mai vista" per
-più sessioni non era la sandbox né la chiave stessa — era impostata come
-`FOOTBALL_DATA_API_KEY` (senza `_ORG_`), un nome diverso da quello che
-`pydantic-settings` leggeva di default. `app/config.py` ora accetta entrambi i
-nomi, ma se in futuro football-data.org sembra di nuovo "senza chiave", il
-primo controllo è confrontare il nome esatto della variabile d'ambiente con
-quello atteso dal codice, non assumere che manchi.
+## Riepilogo in 3 passi
 
----
+1. Installa 3 programmi (una volta sola) — vedi sotto.
+2. Apri PowerShell nella cartella del progetto ed esegui `.\setup.ps1` (una
+   volta sola).
+3. Ogni volta che vuoi usare Porvabet, esegui `.\start.ps1` — apre tutto da
+   solo e ti porta dritto alla pagina con le partite.
 
-Questo progetto viene sviluppato in un ambiente sandbox remoto (container
-effimero, ricreato a ogni sessione). Quell'ambiente ha un limite di rete
-concreto e verificato che **non esiste sul computer dell'utente**: l'IP di
-uscita della sandbox viene bloccato da alcuni servizi esterni a livello di
-rete (geo-blocking/anti-frode, WAF), indipendentemente da credenziali o
-codice. Questo documento spiega quando e perché serve eseguire il progetto
-in locale per completare una verifica, e come farlo.
+## Passo 1 — Installa i 3 programmi necessari
 
-## Perché serve: il blocco di rete della sandbox
+Se li hai già installati, salta al Passo 2.
 
-**Betfair Exchange** è il caso verificato in questa sessione: il login
-interattivo (`POST https://identitysso.betfair.it/api/login`) restituisce
-`HTTP 403` con una pagina Cloudflare che dice esplicitamente
+1. **Python** — <https://www.python.org/downloads/> (scarica l'ultima
+   versione). **Importante**: durante l'installazione, spunta la casella
+   "Add python.exe to PATH" (di solito in basso nella prima schermata) —
+   se non la spunti, dovrai reinstallare.
+2. **Node.js** — <https://nodejs.org/> (scarica la versione "LTS",
+   consigliata).
+3. **PostgreSQL** — <https://www.postgresql.org/download/windows/>
+   (versione 16). Durante l'installazione ti verrà chiesto di scegliere una
+   password per l'utente `postgres`: **scegline una e segnala da qualche
+   parte**, ti servirà tra un minuto. Puoi lasciare tutte le altre opzioni
+   come sono (porta 5432 di default).
 
-> "Our Software detects that you may be accessing the Betfair website from a
-> country that Betfair does not accept bets from or the traffic from your
-> network was detected as being unusual."
+Dopo aver installato tutti e 3, **chiudi e riapri** qualunque finestra
+PowerShell già aperta (serve perché riconosca i nuovi programmi).
 
-testato **sia con credenziali placeholder finte sia con le credenziali reali
-dell'utente** — stesso risultato in entrambi i casi, il che conferma che il
-blocco avviene **prima** di qualunque elaborazione delle credenziali, quindi
-è un blocco sull'IP della sandbox, non un problema di account o di codice.
-L'utente ha confermato che lo stesso login **funziona correttamente da un IP
-italiano/residenziale** (è così che ha ottenuto la propria Delayed
-Application Key). Vedi `DATA_SOURCES.md` per il dettaglio completo.
+## Passo 2 — Setup (una volta sola)
 
-Un limite simile (ma diverso nella causa tecnica: reset del TLS handshake
-per qualunque browser headless, non un blocco geografico) è già documentato
-per Betson/diretta.it e livescore.com — vedi `DATA_SOURCES.md`.
+1. Scarica/clona questo progetto sul tuo computer, in una cartella a tua
+   scelta (es. `C:\Porvabet`).
+2. Apri quella cartella in Esplora File, tieni premuto **Shift** e clicca
+   col tasto destro in uno spazio vuoto → **"Apri finestra PowerShell qui"**
+   (su Windows 11: tasto destro → "Apri nel terminale").
+3. Se è la prima volta che esegui uno script PowerShell su questo computer,
+   incolla questo comando e premi Invio (autorizza solo questa finestra, non
+   cambia nulla in modo permanente):
+   ```powershell
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   ```
+4. Poi esegui:
+   ```powershell
+   .\setup.ps1
+   ```
+5. Lo script controlla tutto da solo, crea il database, e — se è la prima
+   volta — ti chiederà la password di PostgreSQL scelta al Passo 1 (appare
+   un prompt nel terminale: scrivila e premi Invio, non si vedrà nulla
+   mentre digiti, è normale) e aprirà **Blocco Note** con un file da
+   compilare con le tue chiavi Betfair/football-data.org — se non le hai
+   ancora, lascia il file com'è e chiudilo, potrai completarlo più tardi
+   (vedi sotto).
 
-**In pratica**: qualunque verifica che richieda una vera chiamata di rete
-verso Betfair — login, `getDeveloperAppKeys`, copertura mercati 1X2/O-U
-2.5/corner/cartellini, un test end-to-end reale del `BetfairExchangeOddsProvider`
-— non può essere completata dentro la sandbox e va fatta dal computer
-dell'utente.
+Se qualcosa va storto, lo script stampa in rosso cosa non ha funzionato e
+cosa fare — leggi con calma il messaggio prima di richiedere aiuto, spesso
+dice esattamente il problema (vedi anche "Problemi comuni" più sotto).
 
-**Non tutte le fonti sono bloccate allo stesso modo — football-data.org è
-un'eccezione importante.** Verificato dal vivo in questa sessione: la rete
-della sandbox raggiunge `api.football-data.org` normalmente (una chiamata
-pubblica reale a `/v4/areas/2072` ha risposto 200; un token non valido ha
-correttamente risposto "token invalido", non un blocco di rete). Quindi, a
-differenza di Betfair, **una volta ottenuta una chiave gratuita**
-(registrazione su football-data.org), la verifica end-to-end di
-`FootballDataOrgFixtureProvider`/`scripts/ingest_upcoming_fixtures.py` può
-essere fatta anche da dentro questo tipo di ambiente sandbox, non solo dal
-computer dell'utente — non serve necessariamente aspettare una sessione
-locale per quella parte specifica.
+## Passo 2bis — Le tue chiavi (se non le hai ancora messe)
 
-## Prerequisiti
-
-- Python 3.11+
-- Postgres 16 (locale, o raggiungibile in rete)
-- Node.js 20+ (solo per il frontend)
-- Le tue credenziali Betfair: `BETFAIR_USERNAME`, `BETFAIR_PASSWORD`, e una
-  **Delayed** Application Key (`BETFAIR_APP_KEY`) — mai la Live key, a
-  pagamento e non necessaria qui. Se non hai ancora una App Key, generala tu
-  stesso da `apps.betfair.com` ("Accounts API Demo Tool", operazione
-  `createDeveloperAppKeys`) o dal tuo account Betfair — è un passo manuale
-  una tantum, questo progetto non lo automatizza (vedi `DATA_SOURCES.md`).
-- Una chiave gratuita di football-data.org (`FOOTBALL_DATA_ORG_API_KEY`) —
-  registrazione gratuita su `football-data.org` ("Get started"), serve per
-  popolare la prossima giornata di Premier League/Serie A
-  (`scripts/ingest_upcoming_fixtures.py`).
-
-## Setup
-
-```bash
-git clone <questo repository>
-cd Porvabet/backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Postgres locale — una tantum:
-sudo -u postgres psql -c "CREATE USER porvabet WITH PASSWORD 'porvabet_dev' SUPERUSER;"
-sudo -u postgres psql -c "CREATE DATABASE porvabet OWNER porvabet;"
-sudo -u postgres psql -c "CREATE DATABASE porvabet_test OWNER porvabet;"
-
-alembic upgrade head
-```
-
-Crea `backend/.env` (mai committato — è in `.gitignore`; usa
-`backend/.env.example` come riferimento dei nomi):
+Apri `backend\.env` con Blocco Note e compila queste due righe (le altre
+non toccarle):
 
 ```
-DATABASE_URL=postgresql+psycopg://porvabet:porvabet_dev@localhost:5432/porvabet
+BETFAIR_APP_KEY=<la tua Delayed Application Key>
 BETFAIR_USERNAME=<il tuo username Betfair>
 BETFAIR_PASSWORD=<la tua password Betfair>
-BETFAIR_APP_KEY=<la tua Delayed Application Key>
 FOOTBALL_DATA_ORG_API_KEY=<la tua chiave gratuita football-data.org>
 ```
 
-**Non incollare mai questi valori in una chat, in un issue, in un commit o in
-un log condiviso.** Restano solo in questo file locale, non tracciato da git.
+Non hai ancora una chiave football-data.org? È gratuita e richiede un
+minuto: vai su <https://www.football-data.org>, clicca "Get started",
+registrati con la tua email (nessuna carta di credito richiesta), e trovi
+la chiave nella tua area account.
 
-## Verifica end-to-end di Betfair (quello che la sandbox non può fare)
+**Non condividere mai questi valori** (chat, email, screenshot, commit) —
+restano solo in questo file sul tuo computer, che non viene mai caricato
+online da questo progetto.
 
-1. **Conferma che il login funzioni da qui**:
+## Passo 3 — Avvia Porvabet (ogni volta che lo usi)
 
-   ```bash
-   python -c "
-   from app.providers.betfair.provider import BetfairExchangeOddsProvider
-   p = BetfairExchangeOddsProvider()
-   client = p._ensure_client()
-   print('Login OK, sessione attiva:', not client.session_expired)
-   "
+Nella stessa cartella, in PowerShell:
+
+```powershell
+.\start.ps1
+```
+
+Questo script:
+1. controlla che PostgreSQL sia acceso;
+2. apre due nuove finestre (backend e frontend) — **lasciale aperte**,
+   mostrano cosa succede "dietro le quinte"; chiuderle equivale a spegnere
+   Porvabet;
+3. scarica le partite reali della prossima giornata (Premier
+   League/Serie A) da football-data.org, se hai messo la chiave;
+4. apre il browser sulla pagina principale.
+
+La prima volta la tabella potrebbe apparire vuota o con poche righe: clicca
+il pulsante **"AGGIORNA ANALISI"** in alto per far calcolare le analisi
+sulle partite appena scaricate (con Betfair configurato, questa volta le
+quote reali dovrebbero comparire invece di "n/d" — è proprio questo il
+test che stai facendo).
+
+Per chiudere tutto: chiudi semplicemente le due finestre PowerShell aperte
+da `start.ps1`.
+
+## Cosa verificare, la prima volta che Betfair funziona davvero
+
+Questa è la parte che la sandbox non ha mai potuto verificare da sola:
+
+1. Apri una partita nella tabella (click sulla riga) e controlla che la
+   colonna "Quota" mostri un numero reale con `Betfair (exchange, dati
+   ritardati 1-180s)` invece di "n/d".
+2. Prova un paio di partite diverse (Premier League e Serie A, alcune più
+   vicine al kickoff, altre più lontane) — è normale che alcune abbiano
+   quota e altre ancora "n/d" (Betfair non apre tutti i mercati subito).
+3. Se vuoi anche indagare corner/cartellini (ancora "n/d" per tutti):
+   ```powershell
+   cd backend
+   .venv\Scripts\python.exe scripts\discover_betfair_market_types.py
    ```
+   Stampa l'elenco reale dei mercati che Betfair offre per ogni partita
+   già scaricata, segnalando quelli che sembrano corner/cartellini — se ne
+   trovi, riportameli (il testo esatto stampato) così posso collegarli.
+4. Qualunque cosa trovi (quote presenti/assenti, mercati nuovi), dimmelo o
+   annotalo in `DATA_SOURCES.md` — sostituendo le note "non verificato dal
+   vivo" con quello che hai osservato davvero.
 
-   Se stampa `Login OK, sessione attiva: True`, il login funziona (a
-   differenza della sandbox). Se fallisce, l'errore stampato da
-   `betfairlightweight` (status HTTP + `loginStatus`) dice perché — non
-   stampa mai la password o il token.
+## Problemi comuni
 
-2. **Verifica copertura mercati reale** su una partita Premier League o
-   Serie A imminente (nomi squadre come compaiono su Betfair, es. `"Arsenal"`,
-   `"Inter"`):
+**"impossibile caricare... perché l'esecuzione di script è disabilitata su
+questo sistema"** — Esegui `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
+in quella stessa finestra PowerShell, poi riprova il comando. Va rifatto a
+ogni nuova finestra (non è permanente, per scelta — più sicuro).
 
-   ```bash
-   python -c "
-   from app.providers.betfair.provider import BetfairExchangeOddsProvider
-   p = BetfairExchangeOddsProvider()
-   records = p.get_odds_for_match('Arsenal', 'Chelsea', '2026-09-20T15:00:00+00:00')
-   for r in records:
-       print(r.market_label, r.outcome_code, r.decimal_odds)
-   "
-   ```
+**Una finestra (backend o frontend) si chiude subito da sola** — riapri
+PowerShell, vai nella cartella (`cd C:\percorso\della\cartella`) e rilancia
+`.\start.ps1`: questa volta l'errore resta visibile invece di sparire con
+la finestra. Le cause più comuni sono elencate sotto.
 
-   Se la lista è vuota, o mancano OVER/UNDER, significa che quel mercato non
-   è (ancora) tradable su Betfair per quella partita — comportamento atteso,
-   non un bug. Ripeti su 4-5 partite diverse (EPL e Serie A, diverse
-   distanze dal kickoff) per farti un'idea reale della copertura, poi
-   aggiorna `DATA_SOURCES.md` con quello che trovi (sostituendo le note
-   "non verificato dal vivo" con numeri/osservazioni reali).
+**"la porta 8000 (o 3000) è già occupata"** — probabilmente Porvabet è già
+in esecuzione da un avvio precedente (`start.ps1` se ne accorge da solo e
+non ne apre un secondo). Se invece vuoi essere sicuro che non sia rimasto
+nulla acceso, chiudi tutte le finestre PowerShell aperte in precedenza e
+riprova.
 
-3. **Test end-to-end completo** (ingestione storica + analisi con quote live
-   Betfair) su un'istanza locale del backend:
+**"password authentication failed for user postgres"** — hai scritto la
+password di PostgreSQL sbagliata quando richiesta. Rilancia `.\setup.ps1` e
+scrivila con attenzione (non si vede nulla mentre digiti in un prompt
+password, è normale, non significa che non stia scrivendo).
 
-   ```bash
-   python scripts/ingest_football_data.py --competitions EPL SERIE_A --seasons 2015 2024
-   uvicorn app.main:app --reload --port 8000
-   # poi, per una partita futura già presente nel DB (o creata manualmente):
-   curl -X POST http://localhost:8000/matches/<id>/analyze
-   ```
+**PostgreSQL non risponde / "connection refused"** — il servizio
+PostgreSQL non è avviato. Premi il tasto Windows, scrivi "Servizi", apri
+l'app "Servizi", cerca un servizio che inizia con `postgresql-x64-`,
+verifica che sia "In esecuzione" (tasto destro → Avvia se non lo è).
 
-   Se Betfair ha una quota liquida per quella partita, la vedrai come quota
-   reale (`bookmaker = "Betfair (exchange, dati ritardati 1-180s)"`) nella
-   risposta; altrimenti quel mercato resta senza valore/alert calcolabile,
-   mai una quota inventata.
+**Versione Python sbagliata / "Python 3.11+ richiesto"** — hai una
+versione di Python troppo vecchia (o `python` punta a Python 2, raro ma
+possibile). Installa Python da <https://www.python.org/downloads/>
+seguendo di nuovo il Passo 1, assicurandoti di spuntare "Add python.exe to
+PATH", poi riapri PowerShell.
 
-## Frontend
+**"npm: comando non riconosciuto" oppure "python: comando non
+riconosciuto"** — il programma non è nel PATH di Windows. Riapri
+PowerShell (a volte basta), altrimenti reinstalla il programma mancante
+controllando di spuntare l'opzione "aggiungi al PATH" durante
+l'installazione.
+
+**La pagina nel browser resta vuota anche dopo "AGGIORNA ANALISI"** —
+apri la finestra del backend (quella con i log): se mostra un errore in
+rosso, quello spiega cosa non ha funzionato (es. chiave football-data.org
+non valida — l'errore lo nomina esplicitamente). Se non mostra errori ma la
+tabella resta vuota, probabilmente non ci sono ancora partite scaricate:
+verifica che `FOOTBALL_DATA_ORG_API_KEY` sia compilata in `backend\.env` e
+rilancia `.\start.ps1`.
+
+**Ho chiuso per sbaglio una finestra, e ora?** — nessun danno: rilancia
+`.\start.ps1`, riapre solo quello che manca (non tocca ciò che è già
+acceso).
+
+## Per chi preferisce macOS/Linux
+
+Sono disponibili `setup.sh`/`start.sh`, equivalenti a `setup.ps1`/`start.ps1`
+ma per macOS/Linux (bash):
 
 ```bash
-cd frontend
-npm install
-cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL punta al backend locale
-npm run dev   # http://localhost:3000
+chmod +x setup.sh start.sh   # solo la prima volta
+./setup.sh                   # una volta sola
+./start.sh                   # ogni volta che vuoi avviare Porvabet
 ```
 
 ## Dopo la verifica

@@ -430,3 +430,23 @@ completi — è un indice.
   MATCH_ODDS/OVER_UNDER_25). `DATA_SOURCES.md`/`ROADMAP.md`/docstring del
   provider aggiornati con l'evidenza rafforzata. 187 test passano, lint
   pulito.
+- **Setup locale automatizzato, priorità esplicita dell'utente**: aggiunti
+  `setup.ps1`/`start.ps1` (Windows PowerShell, il sistema dell'utente) e
+  `setup.sh`/`start.sh` (macOS/Linux, per parità). `setup.*` controlla i
+  prerequisiti (Python 3.11+, Node 20+, PostgreSQL) con messaggi d'errore
+  che spiegano cosa installare e da dove, crea l'ambiente virtuale, installa
+  le dipendenze backend/frontend, crea utente/database Postgres (idempotente
+  — rieseguibile senza rompere nulla), applica le migrazioni, e crea
+  `backend/.env` da `.env.example` aprendolo in Blocco Note/editor per la
+  compilazione. `start.*` (da usare ogni volta) verifica che Postgres
+  risponda, avvia backend e frontend ciascuno in una finestra separata
+  (mai con `Activate.ps1`, per evitare il blocco da policy di esecuzione
+  PowerShell su una nuova finestra), attende che entrambi rispondano,
+  scarica le fixture reali della prossima giornata se la chiave
+  football-data.org è configurata, e apre il browser sulla homepage.
+  `RUNNING_LOCALLY.md` riscritto da zero per un utente che non ha mai usato
+  un terminale (linguaggio semplice, passi numerati, sezione "Problemi
+  comuni" con la causa e la soluzione esatta per: policy di esecuzione
+  PowerShell bloccata, porta già occupata, password Postgres sbagliata,
+  servizio Postgres non avviato, versione Python sbagliata, comando non
+  riconosciuto, pagina vuota dopo "AGGIORNA ANALISI").
