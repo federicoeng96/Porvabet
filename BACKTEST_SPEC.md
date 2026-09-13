@@ -25,9 +25,21 @@ usare informazioni non disponibili al momento reale della partita.
    costo computazionale, non una scappatoia sul leakage: nessuna partita del
    batch contribuisce al fit usato per predire quel batch.
 
-Questo è testato end-to-end (dati sintetici) in
-`tests/test_analysis_runner.py` e verificato manualmente su un dataset
-sintetico più grande (v. sezione "Validazione empirica" sotto).
+Il principio no-leakage (fit solo su dati strettamente precedenti) è testato
+end-to-end (dati sintetici) in `tests/test_analysis_runner.py` per il motore
+di analisi live (`run_analysis_for_match`) e verificato manualmente su un
+dataset sintetico più grande. Il backtest runner stesso
+(`run_walk_forward_backtest`) — inclusa la simulazione del precompute a 10
+livelli di rischio via `build_risk_ladder` dentro il loop walk-forward, non
+solo le metriche per singolo mercato — ha invece avuto **solo esecuzione
+manuale reale** (i numeri qui sotto) fino a una sessione successiva, senza
+un test automatico dedicato: aggiunto `tests/test_backtest_runner.py`
+(sintetico, veloce) che verifica esplicitamente che ogni livello 1-10 venga
+prodotto e che `segment()` (le stesse metriche hit rate/ROI per livello
+pubblicate sotto) funzioni sull'output reale della funzione, non solo su
+dati costruiti a mano — così una regressione futura nel collegamento
+backtest↔risk-ladder viene individuata prima della prossima esecuzione
+reale, costosa, sui dati storici completi.
 
 ## Approssimazioni dei fattori di rischio nel backtest
 
