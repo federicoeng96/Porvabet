@@ -189,7 +189,14 @@ def main() -> None:
                 if not first:
                     time.sleep(10.0)
                 first = False
-                persist_season(db, provider, source, competition_code, season_label)
+                try:
+                    persist_season(db, provider, source, competition_code, season_label)
+                except Exception as exc:  # noqa: BLE001 — one season's failure (e.g. the
+                    # RemoteProtocolError documented above) must not abort the whole
+                    # multi-season/multi-competition backfill; rerunning later resumes
+                    # cleanly since persist_season already skips fully-persisted seasons.
+                    db.rollback()
+                    print(f"{competition_code} {season_label}: FAILED ({exc}) — skipping, rerun later to resume")
     finally:
         db.close()
 

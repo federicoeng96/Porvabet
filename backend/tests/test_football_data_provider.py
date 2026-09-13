@@ -56,3 +56,20 @@ def test_parse_csv_handles_kickoff_datetime():
     assert records[0].kickoff_utc.month == 8
     assert records[0].kickoff_utc.day == 12
     assert records[0].kickoff_utc.hour == 15
+
+
+def test_parse_csv_skips_a_single_malformed_row_instead_of_failing_the_whole_season():
+    """`FTHG`/`FTAG` are cast with a raw `int()` (unlike every other numeric
+    column, which goes through `_safe_int`) — a non-numeric value here must
+    not discard every other otherwise-good row in the same season's CSV."""
+    provider = FootballDataCoUkProvider()
+    lines = SYNTHETIC_FOOTBALL_DATA_CSV.strip().split("\n")
+    header, rows = lines[0], lines[1:]
+    bad_row = rows[1].replace(",0,0,D,0,0,D,", ",NOT_A_NUMBER,0,D,0,0,D,", 1)
+    csv_with_bad_row = "\n".join([header, rows[0], bad_row, rows[2]])
+
+    records = provider.parse_csv(csv_with_bad_row, "EPL", "2023/2024")
+
+    assert len(records) == 2  # the malformed row is skipped, not the whole season
+    home_teams = {r.home_team_name for r in records}
+    assert home_teams == {"Synthetic United", "Synthetic Town"}

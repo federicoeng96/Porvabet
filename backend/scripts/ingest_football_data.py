@@ -54,11 +54,26 @@ def main() -> None:
                     print(f"  [SKIP] {competition} {season_label}: {exc}")
                     continue
 
+                ingested_this_season = 0
                 for record in records:
-                    ingest_historical_match(db, record)
+                    # A SAVEPOINT per record: one malformed row must not lose every
+                    # already-ingested row from the same season (a plain db.rollback()
+                    # here would discard the whole season's uncommitted progress, not
+                    # just the bad row) — see CHANGELOG.md for how this was found.
+                    try:
+                        with db.begin_nested():
+                            ingest_historical_match(db, record)
+                    except Exception as exc:  # noqa: BLE001 — one bad row must not abort a 10-season run
+                        print(
+                            f"  [SKIP] {competition} {season_label}: malformed record "
+                            f"{record.home_team_name} vs {record.away_team_name} "
+                            f"({record.external_ref}): {exc}"
+                        )
+                        continue
+                    ingested_this_season += 1
                 db.commit()
-                total_ingested += len(records)
-                print(f"  [OK]   {competition} {season_label}: {len(records)} matches")
+                total_ingested += ingested_this_season
+                print(f"  [OK]   {competition} {season_label}: {ingested_this_season} matches")
 
         print(f"\nDone. {total_ingested} real matches ingested (source=football_data_co_uk).")
     finally:

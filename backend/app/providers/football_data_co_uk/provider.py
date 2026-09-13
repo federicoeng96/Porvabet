@@ -33,6 +33,7 @@ This provider has been verified with a real HTTP GET against the live site
 """
 
 import io
+import logging
 from datetime import UTC, datetime
 
 import httpx
@@ -41,6 +42,8 @@ import pandas as pd
 from app.models.enums import DataSourceCategory
 from app.providers.base.dto import HistoricalMatchRecord
 from app.providers.base.sports_data_provider import SportsDataProvider
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281"
 
@@ -96,40 +99,55 @@ class FootballDataCoUkProvider(SportsDataProvider):
         df = df.dropna(subset=["HomeTeam", "AwayTeam", "FTHG", "FTAG"])
 
         records: list[HistoricalMatchRecord] = []
-        for _, row in df.iterrows():
-            kickoff = _parse_kickoff(row.get("Date"), row.get("Time"))
-            records.append(
-                HistoricalMatchRecord(
-                    competition_code=competition_code,
-                    season_label=season_label,
-                    kickoff_utc=kickoff,
-                    home_team_name=str(row["HomeTeam"]).strip(),
-                    away_team_name=str(row["AwayTeam"]).strip(),
-                    home_goals_ft=int(row["FTHG"]),
-                    away_goals_ft=int(row["FTAG"]),
-                    home_goals_ht=_safe_int(row.get("HTHG")),
-                    away_goals_ht=_safe_int(row.get("HTAG")),
-                    referee_name=_safe_str(row.get("Referee")),
-                    home_shots=_safe_int(row.get("HS")),
-                    away_shots=_safe_int(row.get("AS")),
-                    home_shots_on_target=_safe_int(row.get("HST")),
-                    away_shots_on_target=_safe_int(row.get("AST")),
-                    home_corners=_safe_int(row.get("HC")),
-                    away_corners=_safe_int(row.get("AC")),
-                    home_fouls=_safe_int(row.get("HF")),
-                    away_fouls=_safe_int(row.get("AF")),
-                    home_yellow_cards=_safe_int(row.get("HY")),
-                    away_yellow_cards=_safe_int(row.get("AY")),
-                    home_red_cards=_safe_int(row.get("HR")),
-                    away_red_cards=_safe_int(row.get("AR")),
-                    closing_odds_1x2=_extract_1x2_odds(row),
-                    closing_odds_over_under_2_5=_extract_ou25_odds(row),
-                    external_ref=(
-                        f"{competition_code}:{season_label}:"
-                        f"{row['HomeTeam']}:{row['AwayTeam']}:{row.get('Date')}"
-                    ),
+        for row_position, (_, row) in enumerate(df.iterrows()):
+            try:
+                kickoff = _parse_kickoff(row.get("Date"), row.get("Time"))
+                records.append(
+                    HistoricalMatchRecord(
+                        competition_code=competition_code,
+                        season_label=season_label,
+                        kickoff_utc=kickoff,
+                        home_team_name=str(row["HomeTeam"]).strip(),
+                        away_team_name=str(row["AwayTeam"]).strip(),
+                        home_goals_ft=int(row["FTHG"]),
+                        away_goals_ft=int(row["FTAG"]),
+                        home_goals_ht=_safe_int(row.get("HTHG")),
+                        away_goals_ht=_safe_int(row.get("HTAG")),
+                        referee_name=_safe_str(row.get("Referee")),
+                        home_shots=_safe_int(row.get("HS")),
+                        away_shots=_safe_int(row.get("AS")),
+                        home_shots_on_target=_safe_int(row.get("HST")),
+                        away_shots_on_target=_safe_int(row.get("AST")),
+                        home_corners=_safe_int(row.get("HC")),
+                        away_corners=_safe_int(row.get("AC")),
+                        home_fouls=_safe_int(row.get("HF")),
+                        away_fouls=_safe_int(row.get("AF")),
+                        home_yellow_cards=_safe_int(row.get("HY")),
+                        away_yellow_cards=_safe_int(row.get("AY")),
+                        home_red_cards=_safe_int(row.get("HR")),
+                        away_red_cards=_safe_int(row.get("AR")),
+                        closing_odds_1x2=_extract_1x2_odds(row),
+                        closing_odds_over_under_2_5=_extract_ou25_odds(row),
+                        external_ref=(
+                            f"{competition_code}:{season_label}:"
+                            f"{row['HomeTeam']}:{row['AwayTeam']}:{row.get('Date')}"
+                        ),
+                    )
                 )
-            )
+            except (ValueError, TypeError, KeyError) as exc:
+                # One malformed row (e.g. a non-numeric FTHG/FTAG — `dropna` above
+                # only catches missing values, not garbage values) must not discard
+                # an entire season's worth of otherwise-good rows — the caller
+                # (ingest_football_data.py) has no per-row granularity to recover
+                # from a failure at this parsing stage, only per-season.
+                logger.warning(
+                    "football-data.co.uk %s %s: skipping malformed CSV row %d (%s)",
+                    competition_code,
+                    season_label,
+                    row_position,
+                    exc,
+                )
+                continue
         return records
 
 

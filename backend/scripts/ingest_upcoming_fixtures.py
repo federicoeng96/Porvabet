@@ -65,11 +65,25 @@ def main() -> None:
                 print(f"  [SKIP] {competition}: {exc}")
                 continue
 
+            ingested_this_competition = 0
             for record in records:
-                ingest_upcoming_fixture(db, record)
+                # A SAVEPOINT per record: one malformed fixture must not lose
+                # every already-ingested fixture for this competition, nor
+                # abort ingestion of the other competition in this same run.
+                try:
+                    with db.begin_nested():
+                        ingest_upcoming_fixture(db, record)
+                except Exception as exc:  # noqa: BLE001 — one bad fixture must not abort the run
+                    print(
+                        f"  [SKIP] {competition}: malformed fixture "
+                        f"{record.home_team_name} vs {record.away_team_name} "
+                        f"({record.external_ref}): {exc}"
+                    )
+                    continue
+                ingested_this_competition += 1
             db.commit()
-            total_ingested += len(records)
-            print(f"  [OK]   {competition}: {len(records)} upcoming fixtures")
+            total_ingested += ingested_this_competition
+            print(f"  [OK]   {competition}: {ingested_this_competition} upcoming fixtures")
 
         print(f"\nDone. {total_ingested} real upcoming fixtures ingested (source=football_data_org).")
     finally:

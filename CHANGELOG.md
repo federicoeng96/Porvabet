@@ -497,3 +497,47 @@ completi — è un indice.
   due `continue` difensivi in `matches.py` (righe 141/188, scenari di ladder
   incompleta mai prodotti dalla pipeline attuale) e gli stub C-category già
   citati sopra. Lint pulito su tutti i file toccati.
+- **Audit qualità: gestione errori / punti di interruzione brusca**. Passata
+  critica sul codice che gira su dati reali esterni (network/CSV/API), non
+  solo sul percorso di analisi live già indurito in sessioni precedenti (la
+  `FallbackOddsProvider` già isola i fallimenti per singolo provider; il
+  guard `if not candidates: raise ValueError` in `build_risk_ladder` rende
+  di fatto irraggiungibile il `RuntimeError` difensivo in
+  `_nearest_non_empty_bucket`, verificato non un bug reale). Trovati e
+  corretti 4 punti dove un singolo elemento malformato interrompeva
+  bruscamente un intero batch invece di degradare in modo controllato —
+  stesso pattern già usato per `analyze_matches_batch` (isolamento per
+  singolo elemento), qui assente:
+  - `scripts/ingest_football_data.py` e `scripts/ingest_upcoming_fixtures.py`:
+    un singolo record malformato (es. nome squadra mancante/nullo) durante
+    l'ingestione di 10 stagioni × 2 competizioni interrompeva l'intero script
+    — nessun commit per la stagione in corso, e nessun'altra
+    stagione/competizione successiva veniva processata. Corretto con una
+    SAVEPOINT (`db.begin_nested()`) per record: un record malformato viene
+    ora saltato e loggato, i record già ingeriti nella stessa stagione
+    restano. Verificato con una prova funzionale end-to-end contro il
+    database reale (poi ripulita) prima di considerarlo risolto.
+  - `scripts/ingest_understat_tactical_features.py`: il proprio commento nel
+    codice descriveva già un `RemoteProtocolError` osservato realmente
+    durante il backfill di sessioni precedenti — eppure un fallimento di una
+    singola stagione avrebbe interrotto l'intero backfill multi-stagione.
+    Corretto isolando per stagione (try/except attorno a `persist_season`),
+    coerente con il suo stesso design idempotente ("stagione già
+    persistita, salto").
+  - `app/providers/football_data_co_uk/provider.py::parse_csv`: `FTHG`/
+    `FTAG` erano castati con `int()` diretto (a differenza di ogni altra
+    colonna numerica, che passa per `_safe_int`) — un singolo valore non
+    numerico in una riga CSV reale avrebbe fatto fallire l'intera stagione
+    (~380 partite), non solo quella riga. Corretto isolando per riga
+    (try/except attorno alla costruzione di ogni `HistoricalMatchRecord`,
+    riga malformata saltata e loggata). Nuovo test di regressione dedicato.
+  Verificato inoltre (nessuna modifica necessaria): FastAPI senza un
+  exception handler globale restituisce già un 500 generico senza fuga di
+  stack trace su un'eccezione non gestita in un singolo endpoint (non
+  abbatte il processo); `matches.py` non ha ancora isolamento per riga nel
+  caso di un record DB corrotto/orfano (es. `MarketOutcome` mancante) — non
+  corretto perché richiederebbe validazioni difensive su un invariante
+  interno garantito da vincoli FK, non un confine di sistema, coerente con
+  lo stile di questo progetto ("non validare scenari che non possono
+  accadere"); documentato qui come rischio residuo teorico, non come bug.
+  241 test passano (4 nuovi), lint pulito.
