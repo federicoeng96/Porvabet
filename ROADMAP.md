@@ -435,6 +435,23 @@ all'analisi live"), quindi non una scoperta nuova, solo una conferma che
 resta vero. Anche se lo fosse, non sbloccherebbe comunque i player props
 per il motivo sopra (solo modulo, mai nomi giocatore).
 
+**Ri-verificato di nuovo dal vivo il 13/09** (l'utente ha chiesto conferma
+esplicita che non fosse solo una rilettura della sessione precedente):
+chiamata reale a `https://www.corrieredellosport.it/probabili-formazioni/
+calcio/serie-a` in questo momento — HTTP 200, 6 fixture reali della
+prossima giornata Serie A correttamente estratte (Lecce–Monza,
+Napoli–Bologna, Sassuolo–Juventus, Como–Parma, Torino–Roma, Inter–Udinese
+— le stesse 6 appena ingerite da football-data.org), formazioni ancora
+vuote (normale, OPTA non le ha ancora pubblicate a 1-2 giorni dal match) e
+correttamente **nessun record restituito** per queste (mai un placeholder).
+Confermato di nuovo: `CorriereDelloSportLineupProvider` è codice reale e
+funzionante, non uno stub — le uniche due classi stub nel progetto restano
+`GazzettaLineupProvider`/`SosFantaLineupProvider` (`is_available() → False`,
+`NotImplementedError` sul fetch), coerenti con il verdetto negativo
+dell'audit per quelle due fonti. Nessuna classe provider esiste per Sky/BBC
+(mai state implementate, coerente con l'audit: nessuna fonte viabile
+trovata per loro).
+
 ### 8. Serie A
 ✅ Già ingerita e analizzata insieme a Premier League (v. punti 9-10 sopra) —
 il codice era già competition-agnostic (`competition_code` come parametro

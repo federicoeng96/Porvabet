@@ -364,3 +364,14 @@ completi — è un indice.
   piccolo bug UI trovato (errore 422 non mostrato all'utente, solo in
   console) e non corretto perché dipende dalla decisione sopra.
   `ROADMAP.md`/`RUNNING_LOCALLY.md` aggiornati di conseguenza.
+- **Ri-verificato di nuovo dal vivo (non solo riletto)**, su richiesta
+  esplicita dell'utente: `CorriereDelloSportLineupProvider` è codice reale
+  e funzionante, non uno stub — chiamata live proprio ora a
+  `corrieredellosport.it/probabili-formazioni/calcio/serie-a` (HTTP 200, 6
+  fixture reali della prossima giornata correttamente estratte, le stesse
+  6 già ingerite da football-data.org). `GazzettaLineupProvider`/
+  `SosFantaLineupProvider` confermati stub veri (`NotImplementedError`),
+  nessuna classe provider esiste per Sky/BBC — coerente con l'audit
+  negativo già in `DATA_SOURCES.md`. Conferma anche che questo non sblocca
+  i player props (solo modulo di squadra, mai nomi giocatore).
+  `ROADMAP.md` aggiornato con questa ri-verifica.
