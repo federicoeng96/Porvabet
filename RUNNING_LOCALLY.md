@@ -1,26 +1,19 @@
 # Eseguire Porvabet in locale
 
-## ⚡ Azione richiesta ora: chiave gratuita football-data.org
+## ✅ Chiave football-data.org: risolta, primo giro reale completato
 
-Per popolare le partite future reali (prossima giornata Premier League/Serie
-A) serve una chiave API **gratuita** di football-data.org — nessun'altra
-azione la può sostituire, va fatta da un umano:
+La chiave `FOOTBALL_DATA_ORG_API_KEY` è ora funzionante e il primo giro reale
+di ingestione + analisi è stato eseguito (13/09/2026) — risultato completo,
+incluso un problema architetturale reale scoperto in diretta, in
+**`VERIFICATION_LOG.md`**.
 
-1. Vai su **https://www.football-data.org** e clicca **"Get started"**
-   (in alto a destra).
-2. Registrati con la tua email (piano **Free**, nessuna carta di credito
-   richiesta — v. `https://www.football-data.org/pricing`, riga "Free
-   €0,00/mo").
-3. Dopo la registrazione, la chiave (`X-Auth-Token`) è visibile nella tua
-   area account su football-data.org.
-4. Impostala come variabile d'ambiente `FOOTBALL_DATA_ORG_API_KEY` in
-   `backend/.env` (vedi `backend/.env.example`).
-
-Una volta impostata, **non serve necessariamente aspettare una sessione
-locale**: la rete di questa sandbox raggiunge `api.football-data.org`
-normalmente (a differenza di Betfair, bloccato — v. sotto), quindi la
-verifica end-to-end di `scripts/ingest_upcoming_fixtures.py` può essere
-completata anche qui, appena la chiave è disponibile.
+Nota per chi guarda l'ambiente in futuro: la causa del "chiave mai vista" per
+più sessioni non era la sandbox né la chiave stessa — era impostata come
+`FOOTBALL_DATA_API_KEY` (senza `_ORG_`), un nome diverso da quello che
+`pydantic-settings` leggeva di default. `app/config.py` ora accetta entrambi i
+nomi, ma se in futuro football-data.org sembra di nuovo "senza chiave", il
+primo controllo è confrontare il nome esatto della variabile d'ambiente con
+quello atteso dal codice, non assumere che manchi.
 
 ---
 

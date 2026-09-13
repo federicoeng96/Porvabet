@@ -13,40 +13,42 @@ cosa esiste nel codice. Tre categorie, nessuna ambiguità tra "esiste" e
 - Ingestione storica football-data.co.uk: 7.600 partite reali (EPL+Serie A,
   2015/16–2024/25), analisi/backtest/API/frontend testati su questi dati.
 - Motore statistico (Dixon-Coles, `PoissonCountModel`): fit e predizioni
-  reali su queste 7.600 partite.
+  reali su queste 7.600 partite **e, dal 13/09, su fixture reali future**
+  (Man United–Man City, Napoli–Bologna: probabilità 1X2/O-U sensate, v.
+  `VERIFICATION_LOG.md`).
 - Backtest walk-forward a 10 stagioni, incluso il precompute a 10 livelli di
   rischio (`build_risk_ladder` dentro il loop, non solo metriche isolate per
   mercato) — hit rate/ROI/calibrazione reali in `BACKTEST_SPEC.md`.
 - Soglie alert: ricalibrate sul backtest reale (74.100 predizioni risolte),
   non più valori provvisori dal brief — v. `BACKTEST_SPEC.md`.
-- Decision Layer "n/d" (mai riga saltata quando manca una quota): verificato
-  sia con test automatici sia con un giro reale in browser (Playwright) —
-  ma con una partita **sintetica** seminata per il test, quote finte stile
-  Betfair, non ancora con una vera partita futura + una vera quota Betfair
-  insieme (v. sotto).
+- **`FootballDataOrgFixtureProvider`, 13/09**: prima ingestione autenticata
+  reale (9 fixture EPL+Serie A della prossima giornata) — v. punto 1 sotto
+  per il mismatch nomi squadra trovato e corretto in diretta.
+- **Tentativo quota Betfair su una fixture reale, 13/09**: confermato di
+  nuovo dal vivo (non riletto da documentazione precedente) lo stesso 403 —
+  v. `VERIFICATION_LOG.md`.
 - Corriere dello Sport (moduli tattici Serie A): verificato dal vivo contro
   la pagina reale, provider funzionante e testato — ma non ancora collegato
   a `run_analysis_for_match`/`lineup_reconciliation.py` (v. punto 7 sotto).
 
-**🔨 Costruito e testato con mock/dati sintetici, MAI verificato dal vivo
-con dati reali**:
-- `BetfairExchangeOddsProvider`: testato contro le classi di risorse reali
-  di `betfairlightweight` (schema fedele, non dati live). Login testato dal
-  vivo con credenziali reali — bloccato dalla rete della sandbox (v.
-  bloccato sotto), non dal codice.
-- `FootballDataOrgFixtureProvider`: endpoint/schema JSON v4 verificati dal
-  vivo con richieste reali (non simulate) contro `api.football-data.org`,
-  ma senza una chiave valida non è mai stata eseguita una chiamata
-  autenticata reale — testato solo con `httpx.MockTransport` sullo schema
-  verificato. **Bloccato di nuovo stanotte**: l'utente ha comunicato di
-  aver impostato `FOOTBALL_DATA_API_KEY`, ma non risulta presente in
-  nessuna forma in questo ambiente (controllato `env`, `printenv`, una
-  shell di login pulita, `/proc/1/environ`, `.bashrc`/`.profile` di ogni
-  utente) — non un problema di nome variabile diverso, la chiave
-  semplicemente non arriva a questa sessione. Finché non si risolve, i
-  punti 1-3 richiesti stanotte (fixture reali, mapping nomi squadra
-  football-data.org ↔ football-data.co.uk/understat, giro end-to-end con
-  una vera fixture) restano non eseguibili da qui.
+**🔨 Costruito e testato con mock/dati sintetici, verificato dal vivo il
+13/09 — con un risultato reale diverso da quello sperato**:
+- Decision Layer "n/d" (mai riga saltata quando manca una quota): il
+  meccanismo stesso esiste ed è testato, ma il primo vero giro end-to-end
+  con una fixture futura reale (Man United–Man City, Napoli–Bologna, 13/09
+  — v. `VERIFICATION_LOG.md`) ha trovato che **oggi non viene mai
+  raggiunto** per una fixture genuinamente futura in questa sandbox: quando
+  letteralmente nessun mercato ha una quota (Betfair bloccato + nessuna
+  quota storica, il caso normale qui), `run_analysis_for_match` interrompe
+  l'intera analisi con `InsufficientDataError` invece di salvare le righe
+  "n/d" — comportamento preesistente e deliberatamente testato (non un bug
+  di stanotte), ma le sue conseguenze reali (nessuna fixture futura appare
+  mai nel frontend da questa sandbox) si vedono solo ora. **Decisione
+  dell'utente richiesta** su come procedere (v. `VERIFICATION_LOG.md`
+  sezione 4 per le due opzioni) — non presa autonomamente.
+- `BetfairExchangeOddsProvider`: login/richiesta reale confermati di nuovo
+  il 13/09 contro una fixture reale — bloccato dalla rete della sandbox
+  (v. bloccato sotto), non dal codice.
 - Intelligence Engine (`app/engine/intelligence/`): livello di validazione
   costruito e testato, nessuna fonte reale di segnali collegata.
 
@@ -151,15 +153,19 @@ con dati reali**:
     sandbox (non un problema di credenziali/codice — v. `DATA_SOURCES.md`/
     `RUNNING_LOCALLY.md`). Corner/cartellini restano "n/d": indagati a
     fondo, non verificabili da questa sandbox (v. punto sotto).
-19. ✅ **"n/d" esplicito invece di riga saltata + fixture future reali**: il
-    Decision Layer mostra sempre probabilità/quota-modello per MATCH_RESULT/
-    TOTAL_GOALS anche senza quota liquida (mai una riga assente, mai un
-    prezzo inventato — v. `NoOddsEstimateOut`). `FootballDataOrgFixtureProvider`
-    (categoria A) popola la prossima giornata reale Premier League/Serie A
-    (non ancora testato dal vivo con una chiamata autenticata: l'utente ha
-    comunicato di aver impostato la chiave, ma non risulta in questo
-    ambiente — v. "Quadro onesto" sopra; la rete di questa sandbox non è
-    comunque bloccata verso questa API, a differenza di Betfair). Il
+19. ✅ **"n/d" esplicito invece di riga saltata (per riga con almeno un'altra
+    quota) + fixture future reali**: il Decision Layer mostra sempre
+    probabilità/quota-modello per MATCH_RESULT/TOTAL_GOALS anche senza quota
+    liquida su QUELLA riga (mai una riga assente, mai un prezzo inventato —
+    v. `NoOddsEstimateOut`); **ma** v. "Quadro onesto" sopra e
+    `VERIFICATION_LOG.md` per il caso reale trovato il 13/09 in cui NESSUN
+    mercato ha una quota — lì l'intera analisi si interrompe invece di
+    mostrare "n/d" ovunque, comportamento preesistente ora reso visibile,
+    decisione dell'utente richiesta. `FootballDataOrgFixtureProvider`
+    (categoria A) popola la prossima giornata reale Premier League/Serie A —
+    **testato dal vivo con una chiamata autenticata reale il 13/09** (9
+    fixture EPL+Serie A ingerite, chiave risolta — v. `VERIFICATION_LOG.md`
+    per la causa del mismatch di nome che l'aveva bloccata prima). Il
     precompute dei 10 livelli di rischio (1 principale + 2 alternative,
     `build_risk_ladder`) e la sua simulazione nel backtest walk-forward
     (hit rate/ROI per livello, v. `BACKTEST_SPEC.md`) **erano già entrambi

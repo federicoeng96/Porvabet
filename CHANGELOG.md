@@ -343,3 +343,24 @@ completi — è un indice.
   Coventry City (mai vista nelle 10 stagioni storiche EPL/Serie A
   ingerite) crea una riga nuova, correttamente. 3 nuovi test dedicati,
   181 test passano, lint pulito.
+- **Primo giro end-to-end reale completo, documentato in
+  `VERIFICATION_LOG.md`**: fixture reale → Dixon-Coles (probabilità
+  sensate su Man United–Man City e Napoli–Bologna) → tentativo quota
+  Betfair (403 reale confermato di nuovo dal vivo) → Decision Layer.
+  Qui il giro reale ha trovato quello che nessun test sintetico aveva mai
+  potuto trovare: quando **nessun mercato ha una quota da nessuna fonte**
+  (il caso normale per ogni fixture futura reale in questa sandbox),
+  `run_analysis_for_match` interrompe l'intera analisi con
+  `InsufficientDataError` invece di salvare le righe "n/d" — un
+  comportamento preesistente e deliberatamente testato (non un bug di
+  stanotte, v. `test_run_analysis_survives_live_odds_provider_failure`),
+  le cui conseguenze reali (nessuna fixture futura appare mai nel
+  frontend da questa sandbox) diventano visibili solo ora. Non corretto
+  autonomamente: è una vera decisione di prodotto, documentata con le due
+  opzioni concrete in `VERIFICATION_LOG.md`, rimandata all'utente.
+  Playwright confermato: homepage con dati reali storici (non più il seed
+  sintetico), pagina dettaglio della fixture reale mostra correttamente
+  "nessuna analisi disponibile" (nessun crash, nessun dato inventato), un
+  piccolo bug UI trovato (errore 422 non mostrato all'utente, solo in
+  console) e non corretto perché dipende dalla decisione sopra.
+  `ROADMAP.md`/`RUNNING_LOCALLY.md` aggiornati di conseguenza.
