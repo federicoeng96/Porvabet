@@ -32,11 +32,11 @@ function Write-Fail($msg) { Write-Host "    ERRORE: $msg" -ForegroundColor Red }
 
 $venvPython = "$root\backend\.venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
-    Write-Fail "Non trovo backend\.venv — esegui prima .\setup.ps1"
+    Write-Fail "Non trovo backend\.venv - esegui prima .\setup.ps1"
     exit 1
 }
 if (-not (Test-Path "$root\backend\.env")) {
-    Write-Fail "Non trovo backend\.env — esegui prima .\setup.ps1"
+    Write-Fail "Non trovo backend\.env - esegui prima .\setup.ps1"
     exit 1
 }
 
@@ -73,11 +73,11 @@ if (Test-Port 5432) {
 # --- 2. Backend ------------------------------------------------------------
 Write-Step "Avvio il backend (FastAPI)"
 if (Test-Port 8000) {
-    Write-Warn "La porta 8000 e' gia' occupata — presumo che il backend sia gia' avviato da una finestra precedente, non ne apro un'altra."
+    Write-Warn "La porta 8000 e' gia' occupata - presumo che il backend sia gia' avviato da una finestra precedente, non ne apro un'altra."
     Write-Host "    Se invece la porta 8000 e' usata da un altro programma, chiudilo e rilancia questo script."
 } else {
     # Nota: si invoca direttamente l'eseguibile python del venv (non si "attiva"
-    # il venv con Activate.ps1) apposta — Activate.ps1 e' anch'esso uno script
+    # il venv con Activate.ps1) apposta - Activate.ps1 e' anch'esso uno script
     # PowerShell e potrebbe essere bloccato dalla policy di esecuzione di questa
     # nuova finestra, anche se questo script e' stato sbloccato per la finestra
     # corrente. Chiamare python.exe direttamente evita del tutto il problema.
@@ -98,7 +98,7 @@ if (Test-Port 8000) {
 # --- 3. Frontend -------------------------------------------------------------
 Write-Step "Avvio il frontend (Next.js)"
 if (Test-Port 3000) {
-    Write-Warn "La porta 3000 e' gia' occupata — presumo che il frontend sia gia' avviato da una finestra precedente, non ne apro un'altra."
+    Write-Warn "La porta 3000 e' gia' occupata - presumo che il frontend sia gia' avviato da una finestra precedente, non ne apro un'altra."
 } else {
     Start-Process powershell -ArgumentList @(
         "-NoExit", "-Command",
@@ -118,7 +118,7 @@ Write-Step "Scarico le partite reali della prossima giornata (Premier League/Ser
 $envContent = Get-Content "$root\backend\.env" -Raw
 $hasFootballKey = ($envContent -match "FOOTBALL_DATA_ORG_API_KEY\s*=\s*\S") -or ($envContent -match "FOOTBALL_DATA_API_KEY\s*=\s*\S")
 if (-not $hasFootballKey) {
-    Write-Warn "Nessuna chiave football-data.org configurata in backend\.env — salto questo passo."
+    Write-Warn "Nessuna chiave football-data.org configurata in backend\.env - salto questo passo."
     Write-Host "    La tabella si apre comunque, ma potrebbe essere vuota o mostrare solo dati"
     Write-Host "    gia' presenti nel database. Registrati gratis su football-data.org, aggiungi"
     Write-Host "    FOOTBALL_DATA_ORG_API_KEY a backend\.env, poi rilancia questo script."
@@ -131,7 +131,7 @@ if (-not $hasFootballKey) {
 # --- 5. Apri il browser -------------------------------------------------------
 Write-Step "Apro il browser"
 Start-Process "http://localhost:3000"
-Write-Ok "Fatto — se la pagina e' vuota, clicca 'AGGIORNA ANALISI' per calcolare le analisi delle partite appena scaricate."
+Write-Ok "Fatto - se la pagina e' vuota, clicca 'AGGIORNA ANALISI' per calcolare le analisi delle partite appena scaricate."
 
 Write-Host ""
 Write-Host "=================================================="
@@ -140,5 +140,5 @@ Write-Host "=================================================="
 Write-Host "Backend:  http://localhost:8000/docs"
 Write-Host "Frontend: http://localhost:3000"
 Write-Host ""
-Write-Host "Le due finestre PowerShell appena aperte mostrano i log in diretta — lasciale"
+Write-Host "Le due finestre PowerShell appena aperte mostrano i log in diretta - lasciale"
 Write-Host "aperte finche' usi l'app. Per fermare tutto, chiudile (o Ctrl+C dentro ciascuna)."

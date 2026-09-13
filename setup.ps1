@@ -7,7 +7,7 @@
 # Come eseguirlo:
 #   1. Apri PowerShell nella cartella di Porvabet (tasto destro nella
 #      cartella -> "Apri in Terminale" oppure "Apri finestra PowerShell qui").
-#   2. Se è la prima volta che esegui uno script PowerShell su questo PC,
+#   2. Se e' la prima volta che esegui uno script PowerShell su questo PC,
 #      esegui prima questo comando (autorizza SOLO questa finestra, non
 #      cambia impostazioni permanenti del PC):
 #        Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -121,47 +121,68 @@ Write-Host "    Installo le dipendenze Python (puo' richiedere qualche minuto la
 & $venvPython -m pip install --upgrade pip --quiet
 & $venvPython -m pip install -e ".[dev]" --quiet
 if ($LASTEXITCODE -ne 0) {
-    Write-Fail "Installazione delle dipendenze Python fallita — vedi l'errore sopra (spesso una connessione internet instabile: riprova)."
+    Write-Fail "Installazione delle dipendenze Python fallita - vedi l'errore sopra (spesso una connessione internet instabile: riprova)."
     exit 1
 }
 Write-Ok "Dipendenze Python installate."
 
 # --- 3. Database PostgreSQL ---------------------------------------------
 Write-Step "Preparazione database PostgreSQL"
-Write-Host "    Ora verranno creati l'utente e i database 'porvabet'/'porvabet_test'."
+Write-Host "    Ora verranno creati l'utente e i database 'porvabet'/'porvabet_test'"
+Write-Host "    (se non esistono gia' - rieseguire questo script piu' volte e' sicuro)."
 Write-Host "    Se richiesto, inserisci la password dell'utente PostgreSQL 'postgres'"
 Write-Host "    (quella scelta durante l'installazione di PostgreSQL)."
 Write-Host ""
 
-function Invoke-PsqlAdmin($sql) {
-    # Restituisce $true se il comando è andato a buon fine O se l'oggetto esisteva
-    # già (postgres risponde con un errore "already exists", che qui è normale e
-    # non un fallimento — questo script è pensato per essere rieseguito).
-    $output = & psql -U postgres -h localhost -c $sql 2>&1
-    $ok = ($LASTEXITCODE -eq 0) -or ($output -match "already exists")
-    if (-not $ok) {
-        Write-Warn "Comando psql non riuscito: $sql"
-        Write-Host "    Dettaglio: $output"
-    }
-    return $ok
-}
+# Un solo script SQL invece di 3 comandi CREATE separati: controlla prima se
+# ruolo/database esistono gia' (query di sistema, mai testo d'errore) e crea
+# solo quello che manca. Questo e' l'unico modo davvero affidabile di essere
+# idempotenti: il vecchio approccio si basava sul fatto che l'errore di
+# PostgreSQL per "esiste gia'" contenesse la frase inglese "already exists" -
+# ma PostgreSQL traduce i suoi messaggi nella lingua del sistema operativo, e
+# su un Windows in italiano il messaggio reale e' diverso (es. "il ruolo
+# esiste gia'"), quindi il controllo falliva silenziosamente e lo script si
+# fermava con un errore anche se non c'era nulla di rotto. Verificato con un
+# vero PostgreSQL: eseguito due volte di seguito, la seconda volta non crea
+# nulla e non genera alcun errore.
+$dbSetupSql = @'
+DO $do$
+BEGIN
+   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'porvabet') THEN
+      CREATE ROLE porvabet WITH LOGIN PASSWORD 'porvabet_dev' SUPERUSER;
+   END IF;
+END
+$do$;
 
-$dbOk = $true
-$dbOk = (Invoke-PsqlAdmin "CREATE USER porvabet WITH PASSWORD 'porvabet_dev' SUPERUSER;") -and $dbOk
-$dbOk = (Invoke-PsqlAdmin "CREATE DATABASE porvabet OWNER porvabet;") -and $dbOk
-$dbOk = (Invoke-PsqlAdmin "CREATE DATABASE porvabet_test OWNER porvabet;") -and $dbOk
+SELECT 'CREATE DATABASE porvabet OWNER porvabet' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'porvabet')
+\gexec
+
+SELECT 'CREATE DATABASE porvabet_test OWNER porvabet' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'porvabet_test')
+\gexec
+'@
+
+# \gexec funziona in modo affidabile solo leggendo da un vero file di script
+# (-f), non passando piu' comandi -c separati (verificato: con -c multipli
+# \gexec non esegue il comando generato, fallisce silenziosamente) - da qui
+# il file temporaneo invece di una singola riga -c.
+$dbSetupSqlPath = Join-Path $env:TEMP "porvabet_db_setup_$PID.sql"
+Set-Content -Path $dbSetupSqlPath -Value $dbSetupSql -Encoding ASCII
+$psqlOutput = & psql -U postgres -h localhost -f $dbSetupSqlPath 2>&1
+$dbOk = ($LASTEXITCODE -eq 0)
+Remove-Item $dbSetupSqlPath -ErrorAction SilentlyContinue
 
 if (-not $dbOk) {
-    Write-Fail "Preparazione database non completata — vedi i messaggi sopra."
+    Write-Fail "Preparazione database non completata - vedi i messaggi sopra."
+    Write-Host "    Dettaglio: $psqlOutput"
     Write-Host "    Errore comune: 'password authentication failed for user postgres' significa"
-    Write-Host "    che la password inserita non e' quella giusta per l'utente postgres — riprova."
+    Write-Host "    che la password inserita non e' quella giusta per l'utente postgres - riprova."
     Write-Host "    Errore comune: 'connection refused' o 'server non risponde' significa che il"
-    Write-Host "    servizio PostgreSQL non e' avviato — apri 'Servizi' di Windows (cerca 'Servizi'"
+    Write-Host "    servizio PostgreSQL non e' avviato - apri 'Servizi' di Windows (cerca 'Servizi'"
     Write-Host "    nel menu Start), trova un servizio che inizia con 'postgresql-x64-', e verifica"
     Write-Host "    che sia 'In esecuzione' (se non lo e', tasto destro -> Avvia)."
     exit 1
 } else {
-    Write-Ok "Database pronti (porvabet, porvabet_test)."
+    Write-Ok "Database pronti (porvabet, porvabet_test) - creati se mancanti, lasciati invariati se gia' presenti."
 }
 
 # --- 4. File .env --------------------------------------------------------
@@ -169,21 +190,21 @@ Write-Step "Configurazione backend\.env"
 $envPath = "$root\backend\.env"
 if (-not (Test-Path $envPath)) {
     Copy-Item "$root\backend\.env.example" $envPath
-    Write-Warn "Creato backend\.env da .env.example — ora si aprira' con Blocco Note."
+    Write-Warn "Creato backend\.env da .env.example - ora si aprira' con Blocco Note."
     Write-Host "    Compila (o lascia vuote per ora) le chiavi Betfair/football-data.org."
     Write-Host "    DATABASE_URL e' gia' corretto per il database appena creato, non toccarlo."
     Write-Host ""
     Start-Process notepad.exe $envPath
     Read-Host "    Premi INVIO qui nel terminale quando hai salvato e chiuso Blocco Note" | Out-Null
 } else {
-    Write-Ok "backend\.env gia' presente — non lo tocco (per non perdere le tue chiavi)."
+    Write-Ok "backend\.env gia' presente - non lo tocco (per non perdere le tue chiavi)."
 }
 
 # --- 5. Migrazioni database ----------------------------------------------
 Write-Step "Applico le migrazioni del database (creazione tabelle)"
 & $venvPython -m alembic upgrade head
 if ($LASTEXITCODE -ne 0) {
-    Write-Fail "alembic upgrade head fallito — vedi l'errore sopra."
+    Write-Fail "alembic upgrade head fallito - vedi l'errore sopra."
     Write-Host "    Errore comune: se DATABASE_URL in backend\.env punta a un database diverso da"
     Write-Host "    quello appena creato, correggilo e rilancia questo script."
     exit 1
@@ -205,7 +226,7 @@ if (-not (Test-Path $envLocalPath)) {
 Write-Host "    Installo le dipendenze del frontend (puo' richiedere qualche minuto)..."
 npm install --silent
 if ($LASTEXITCODE -ne 0) {
-    Write-Fail "npm install fallito — vedi l'errore sopra (spesso una connessione internet instabile: riprova)."
+    Write-Fail "npm install fallito - vedi l'errore sopra (spesso una connessione internet instabile: riprova)."
     exit 1
 }
 Write-Ok "Dipendenze frontend installate."
@@ -218,7 +239,7 @@ Write-Host " Setup completato." -ForegroundColor Green
 Write-Host "=================================================="
 Write-Host ""
 Write-Host "Se non hai ancora compilato backend\.env con le tue chiavi Betfair/"
-Write-Host "football-data.org, puoi farlo ora (apri il file con Blocco Note) — o lasciarlo"
+Write-Host "football-data.org, puoi farlo ora (apri il file con Blocco Note) - o lasciarlo"
 Write-Host "vuoto e farlo dopo, il progetto degrada semplicemente mostrando 'n/d' finche'"
 Write-Host "quelle chiavi non ci sono."
 Write-Host ""

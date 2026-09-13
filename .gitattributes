@@ -1,0 +1,8 @@
+# Line endings are pinned explicitly rather than left to each clone's local
+# git config (core.autocrlf) - a Windows user's default "checkout
+# Windows-style" setting is harmless for .ps1 (PowerShell reads both LF and
+# CRLF) but would be actively wrong for .sh: a CRLF shebang line
+# (`#!/usr/bin/env bash\r`) makes bash/macOS refuse to run the script at all.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.sh text eol=lf

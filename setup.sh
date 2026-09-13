@@ -91,32 +91,49 @@ step "Preparazione database PostgreSQL"
 echo "    Se richiesto, potresti dover autenticarti come utente 'postgres' del sistema."
 echo
 
-run_psql_admin() {
-    local sql="$1"
-    local output
-    if output="$(psql -U postgres -h localhost -c "$sql" 2>&1)"; then
-        return 0
-    elif echo "$output" | grep -q "already exists"; then
-        return 0
-    else
-        warn "Comando psql non riuscito: $sql"
-        echo "    Dettaglio: $output"
-        return 1
-    fi
-}
+# Un solo script SQL invece di 3 comandi CREATE separati: controlla prima se
+# ruolo/database esistono gia' (query di sistema, mai testo d'errore) e crea
+# solo quello che manca. Il vecchio approccio cercava la frase inglese
+# "already exists" nell'output di psql, ma PostgreSQL traduce i suoi
+# messaggi nella lingua di sistema — su un sistema in italiano il messaggio
+# reale e' diverso, quindi il controllo falliva silenziosamente e lo script
+# si fermava con un errore anche quando non c'era nulla di rotto.
+DB_SETUP_SQL="$(mktemp)"
+cat > "$DB_SETUP_SQL" <<'EOF'
+DO $do$
+BEGIN
+   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'porvabet') THEN
+      CREATE ROLE porvabet WITH LOGIN PASSWORD 'porvabet_dev' SUPERUSER;
+   END IF;
+END
+$do$;
 
-DB_OK=1
-run_psql_admin "CREATE USER porvabet WITH PASSWORD 'porvabet_dev' SUPERUSER;" || DB_OK=0
-run_psql_admin "CREATE DATABASE porvabet OWNER porvabet;" || DB_OK=0
-run_psql_admin "CREATE DATABASE porvabet_test OWNER porvabet;" || DB_OK=0
+SELECT 'CREATE DATABASE porvabet OWNER porvabet' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'porvabet')
+\gexec
 
-if [ "$DB_OK" -eq 0 ]; then
+SELECT 'CREATE DATABASE porvabet_test OWNER porvabet' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'porvabet_test')
+\gexec
+EOF
+
+# set +e/-e attorno alla chiamata: con "set -e" attivo, un'assegnazione
+# semplice come `VAR="$(comando_che_fallisce)"` termina lo script
+# immediatamente (comportamento reale di bash, verificato) - qui invece
+# serve catturare l'output ANCHE quando psql fallisce, per mostrare un
+# messaggio d'errore chiaro invece di un'uscita silenziosa.
+set +e
+PSQL_OUTPUT="$(psql -U postgres -h localhost -f "$DB_SETUP_SQL" 2>&1)"
+DB_OK=$?
+set -e
+rm -f "$DB_SETUP_SQL"
+
+if [ "$DB_OK" -ne 0 ]; then
     fail "Preparazione database non completata — vedi i messaggi sopra."
+    echo "    Dettaglio: $PSQL_OUTPUT"
     echo "    Errore comune: se 'psql -U postgres' chiede una password che non conosci, prova"
     echo "    'sudo -u postgres psql' al posto di 'psql -U postgres' (comune su Linux)."
     exit 1
 else
-    ok "Database pronti (porvabet, porvabet_test)."
+    ok "Database pronti (porvabet, porvabet_test) - creati se mancanti, lasciati invariati se gia' presenti."
 fi
 
 # --- 4. File .env --------------------------------------------------------
