@@ -52,10 +52,11 @@ export default function MatchDetailPage() {
         </div>
         <div>Probabilità modello: {(sel.probability * 100).toFixed(1)}%</div>
         <div>
-          Quota bookmaker ({sel.bookmaker_name ?? "n/d"}): <strong>{sel.bookmaker_odds.toFixed(2)}</strong>
+          Quota bookmaker ({sel.bookmaker_name ?? "n/d"}):{" "}
+          <strong>{sel.bookmaker_odds !== null ? sel.bookmaker_odds.toFixed(2) : "n/d"}</strong>
         </div>
         <div>Quota fair stimata: {sel.fair_odds.toFixed(2)}</div>
-        <div>Valore/edge stimato: {(sel.value * 100).toFixed(1)}%</div>
+        <div>Valore/edge stimato: {sel.value !== null ? `${(sel.value * 100).toFixed(1)}%` : "n/d"}</div>
         <div className="muted">Incertezza: {(sel.uncertainty * 100).toFixed(0)}%</div>
         <div className="muted">Confidence: {(sel.confidence * 100).toFixed(0)}%</div>
         <p className="muted">{sel.rationale}</p>

@@ -127,12 +127,15 @@ def run_analysis_for_match(
     candidates, prediction_rows = _build_candidates_and_predictions(
         db, match, model, model_version, analysis_version, uncertainty, competition_id
     )
-    if not candidates:
-        raise InsufficientDataError(
-            "No market has both a model probability and a bookmaker odds quote for "
-            "this match — nothing to analyze."
-        )
-
+    # `candidates` always has one entry per MATCH_RESULT/TOTAL_GOALS outcome once the
+    # model has fit (5 outcomes, unconditionally — see _build_candidates_and_predictions):
+    # a real Candidate with a real bookmaker_odds/value when a quote exists, otherwise
+    # one with bookmaker_odds=None/value=None ("n/d"). The ladder is therefore always
+    # buildable, even when literally no market anywhere has a quote (Betfair
+    # unavailable and no historical closing odds — the normal case for a genuinely
+    # future fixture) — Value/Alert are "n/d" on every level rather than the whole
+    # analysis refusing to produce anything. See VERIFICATION_LOG.md for the real
+    # fixture that first exposed the previous all-or-nothing behavior.
     ladder = build_risk_ladder(candidates)
 
     risk_levels_out = []
@@ -193,8 +196,9 @@ def _refresh_live_odds_for_match(db: Session, match: Match, odds_provider: OddsP
     unexpected response), this logs and returns 0 — the rest of the analysis
     then proceeds exactly as before this feature existed, using whatever
     OddsQuote rows already exist (possibly none, in which case
-    `_build_candidates_and_predictions` correctly produces no Candidate for
-    that market — never an invented price).
+    `_build_candidates_and_predictions` still produces a Candidate for that
+    market, with bookmaker_odds=None/value="n/d" — never an invented price,
+    and never a market silently missing from the ladder either).
     """
     if not odds_provider.is_available():
         return 0
@@ -417,35 +421,10 @@ def _build_candidates_and_predictions(
             .where(OddsQuote.market_outcome_id == outcome.id)
             .order_by(OddsQuote.captured_at.desc())
         )
-        if odds_quote is None:
-            # No liquid quote from any configured source (see
-            # BetfairExchangeOddsProvider/FallbackOddsProvider) for this
-            # outcome — persist the model's own probability/fair-odds
-            # estimate anyway (never skip the row), but never a
-            # Candidate/RiskSelection: those require a real market price for
-            # value/risk. Same "n/d" treatment already given to CORNERS/CARDS
-            # in count_market_estimates.py — Value/Alert stay explicitly
-            # unavailable, never a guessed number.
-            db.add(
-                Prediction(
-                    analysis_version_id=analysis_version.id,
-                    market_outcome_id=outcome.id,
-                    model_version_id=model_version.id,
-                    probability=probability,
-                    fair_odds=fair,
-                    bookmaker_odds=None,
-                    bookmaker_name=None,
-                    value=None,
-                    uncertainty=uncertainty,
-                    confidence=1.0 - uncertainty,
-                )
-            )
-            continue
+        bookmaker_odds = odds_quote.decimal_odds if odds_quote is not None else None
 
-        value = expected_value(probability, odds_quote.decimal_odds)
-        disc = discrepancy_pct(probability, odds_quote.decimal_odds)
-        alert_level = classify_alert(disc)
-
+        # model_reliability never depends on whether a quote exists — it reads the
+        # real backtest calibration curve for this market/competition regardless.
         reliability_estimate = model_reliability_for(
             db, ModelFamily.DIXON_COLES_POISSON, category, competition_id, probability
         )
@@ -462,20 +441,30 @@ def _build_candidates_and_predictions(
 
         factors = RiskFactors(
             probability=probability,
-            bookmaker_odds=odds_quote.decimal_odds,
+            bookmaker_odds=bookmaker_odds,
             uncertainty=uncertainty,
             data_quality=1.0,
             model_reliability=model_reliability,
             prediction_stability=1.0,
             lineup_dependency=0.0,
         )
+        # A Candidate/Prediction is built unconditionally, whether or not a real
+        # quote exists (see VERIFICATION_LOG.md — a real fixture with literally no
+        # quote anywhere used to abort the whole analysis here). No liquid quote
+        # from any configured source (BetfairExchangeOddsProvider/
+        # FallbackOddsProvider) means bookmaker_odds/value stay explicitly None
+        # ("n/d") — the model's own probability/fair-odds estimate is never
+        # withheld, and the outcome still enters the risk ladder below, just
+        # never with a guessed price. Same "n/d" principle already applied to
+        # CORNERS/CARDS in count_market_estimates.py, now applied uniformly here
+        # too instead of only when *some* (not all) markets lack a quote.
         candidate = Candidate(
             market_outcome_key=f"{category}:{code}",
             market_category=category,
             market_label=MARKET_LABELS.get(category, category),
             outcome_label=code,
             probability=probability,
-            bookmaker_odds=odds_quote.decimal_odds,
+            bookmaker_odds=bookmaker_odds,
             fair_odds_value=fair,
             risk_factors=factors,
         )
@@ -487,9 +476,11 @@ def _build_candidates_and_predictions(
             model_version_id=model_version.id,
             probability=probability,
             fair_odds=fair,
-            bookmaker_odds=odds_quote.decimal_odds,
-            bookmaker_name=odds_quote.bookmaker,
-            value=value,
+            bookmaker_odds=bookmaker_odds,
+            bookmaker_name=odds_quote.bookmaker if odds_quote is not None else None,
+            value=(
+                expected_value(probability, bookmaker_odds) if bookmaker_odds is not None else None
+            ),
             uncertainty=uncertainty,
             confidence=1.0 - uncertainty,
         )
@@ -497,29 +488,31 @@ def _build_candidates_and_predictions(
         db.flush()
         predictions[candidate.market_outcome_key] = prediction
 
-        if alert_level != AlertLevel.NONE:
-            db.add(
-                Alert(
-                    prediction_id=prediction.id,
-                    level=alert_level,
-                    discrepancy_pct=disc,
-                    explanation=(
-                        f"{MARKET_LABELS.get(category, category)} {code}: "
-                        f"probabilità modello {probability:.1%} vs probabilità "
-                        f"implicita mercato {1 / odds_quote.decimal_odds:.1%}."
-                    ),
+        if odds_quote is not None:
+            disc = discrepancy_pct(probability, odds_quote.decimal_odds)
+            alert_level = classify_alert(disc)
+            if alert_level != AlertLevel.NONE:
+                db.add(
+                    Alert(
+                        prediction_id=prediction.id,
+                        level=alert_level,
+                        discrepancy_pct=disc,
+                        explanation=(
+                            f"{MARKET_LABELS.get(category, category)} {code}: "
+                            f"probabilità modello {probability:.1%} vs probabilità "
+                            f"implicita mercato {1 / odds_quote.decimal_odds:.1%}."
+                        ),
+                    )
                 )
-            )
 
     return candidates, predictions
 
 
 def _alt_rationale(item) -> str:
     c = item.candidate
-    return (
-        f"Alternativa — {c.market_label} {c.outcome_label}: probabilità {c.probability:.1%}, "
-        f"quota {c.bookmaker_odds:.2f}, valore atteso {item.value:+.1%}."
-    )
+    odds_part = f"quota {c.bookmaker_odds:.2f}" if c.bookmaker_odds is not None else "quota n/d"
+    value_part = f"valore atteso {item.value:+.1%}" if item.value is not None else "valore atteso n/d"
+    return f"Alternativa — {c.market_label} {c.outcome_label}: probabilità {c.probability:.1%}, {odds_part}, {value_part}."
 
 
 def _mark_previous_versions_superseded(db: Session, match_id: int) -> None:

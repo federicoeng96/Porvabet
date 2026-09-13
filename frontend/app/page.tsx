@@ -69,7 +69,12 @@ export default function HomePage() {
         .map((m) => {
           const level = effectiveRisk(m.id);
           const riskLevelData = m.risk_levels.find((rl) => rl.risk_level === level);
-          return riskLevelData ? { match: m, riskLevel: level, selection: riskLevelData.main } : null;
+          // A main selection with no real quote ("n/d") has no real price to
+          // stake against — excluded from the automatic bet slip (whose total
+          // quote is a real product of real odds), even though it's still
+          // shown, navigable, in the main table above.
+          if (!riskLevelData || riskLevelData.main.bookmaker_odds === null) return null;
+          return { match: m, riskLevel: level, selection: riskLevelData.main };
         })
         .filter((x): x is BetSlipItem => x !== null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,15 +174,15 @@ export default function HomePage() {
                     </td>
                     <td>
                       <span className="odds-cell">
-                        {sel.bookmaker_odds.toFixed(2)}
+                        {sel.bookmaker_odds !== null ? sel.bookmaker_odds.toFixed(2) : "n/d"}
                         <span className="odds-source">{sel.bookmaker_name ?? "n/d"}</span>
                       </span>
                     </td>
                     <td>{(sel.probability * 100).toFixed(1)}%</td>
                     <td>{sel.fair_odds.toFixed(2)}</td>
                     <td className="muted">{riskLevelData.risk_level ? sel.rationale.split(":")[0] : ""}</td>
-                    <td className={sel.value >= 0 ? "value-positive" : "value-negative"}>
-                      {(sel.value * 100).toFixed(1)}%
+                    <td className={sel.value === null ? "muted" : sel.value >= 0 ? "value-positive" : "value-negative"}>
+                      {sel.value !== null ? `${(sel.value * 100).toFixed(1)}%` : "n/d"}
                     </td>
                     <td style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                       {sel.alert && sel.alert.level !== "NONE" && (

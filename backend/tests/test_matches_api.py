@@ -135,13 +135,16 @@ def test_batch_analyze_reports_error_for_unknown_match_id_without_failing_batch(
 
 
 def test_match_detail_exposes_nd_estimates_for_markets_without_a_quote(db_session):
-    """API-level check that additional_estimates carries the generalized
-    "n/d" shape (one row per outcome, MATCH_RESULT included, not just
-    CORNERS/CARDS's OVER/UNDER pair). Sets up the analysis directly via
-    run_analysis_for_match (never through the HTTP /analyze endpoint, which
-    would default to the real Betfair provider chain and attempt a live
-    network call this test suite must never make) — only the read path
-    (`GET /matches/{id}`) goes through the actual FastAPI router/serialization.
+    """API-level check of the "n/d" shape once a Prediction has no real quote:
+    a MATCH_RESULT/TOTAL_GOALS outcome without a quote now shows up inside
+    `risk_levels` itself (bookmaker_odds/value = None, no alert), since those
+    two markets always enter the ladder — `additional_estimates` is reserved
+    for outcomes never part of the ladder at all (CORNERS/CARDS). Sets up the
+    analysis directly via run_analysis_for_match (never through the HTTP
+    /analyze endpoint, which would default to the real Betfair provider chain
+    and attempt a live network call this test suite must never make) — only
+    the read path (`GET /matches/{id}`) goes through the actual FastAPI
+    router/serialization.
     """
     from datetime import timedelta
 
@@ -194,10 +197,22 @@ def test_match_detail_exposes_nd_estimates_for_markets_without_a_quote(db_sessio
 
     assert len(body["risk_levels"]) == 10  # MATCH_RESULT candidates fill the whole ladder
 
-    nd = body["additional_estimates"]
-    outcomes = {(e["market_category"], e["outcome_label"]) for e in nd}
-    assert outcomes == {("TOTAL_GOALS", "OVER"), ("TOTAL_GOALS", "UNDER")}
-    for estimate in nd:
-        assert estimate["probability"] > 0
-        assert estimate["fair_odds"] > 0
-        assert estimate["note"]  # explains why Value/Alert are n/d
+    # TOTAL_GOALS (no quote from _FakeProvider) now enters the ladder itself as
+    # n/d Candidates rather than only `additional_estimates` — collect every
+    # selection (main + alternatives) across all 10 levels to find them.
+    all_selections = [lvl["main"] for lvl in body["risk_levels"]] + [
+        alt for lvl in body["risk_levels"] for alt in lvl["alternatives"]
+    ]
+    total_goals_selections = [s for s in all_selections if s["market_category"] == "TOTAL_GOALS"]
+    assert total_goals_selections  # actually picked somewhere, not just permitted to be
+    for sel in total_goals_selections:
+        assert sel["bookmaker_odds"] is None
+        assert sel["value"] is None
+        assert sel["probability"] > 0
+        assert sel["fair_odds"] > 0
+        assert sel["alert"] is None  # no discrepancy computable without a real quote
+
+    # additional_estimates is reserved for outcomes never part of the ladder at
+    # all (CORNERS/CARDS) — since both TOTAL_GOALS outcomes are now covered by
+    # the ladder itself, there is nothing left to list here for this match.
+    assert body["additional_estimates"] == []

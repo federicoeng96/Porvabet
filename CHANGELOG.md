@@ -375,3 +375,37 @@ completi — è un indice.
   negativo già in `DATA_SOURCES.md`. Conferma anche che questo non sblocca
   i player props (solo modulo di squadra, mai nomi giocatore).
   `ROADMAP.md` aggiornato con questa ri-verifica.
+- **Decisione dell'utente implementata: risk ladder completa con "n/d" anche
+  quando NESSUN mercato ha una quota reale**, chiudendo l'unico punto aperto
+  di `VERIFICATION_LOG.md`. `Candidate.bookmaker_odds`/
+  `RiskFactors.bookmaker_odds`/`ScoredCandidate.value` diventano `float |
+  None`; `_build_candidates_and_predictions` costruisce sempre un `Candidate`
+  per ogni esito MATCH_RESULT/TOTAL_GOALS (mai più un ramo che salta la sua
+  costruzione); `compute_risk_raw` redistribuisce il peso "odds_magnitude"
+  sugli altri fattori reali quando la quota manca, invece di inventare un
+  prezzo sostitutivo; rimossa la riga che interrompeva l'analisi con
+  `InsufficientDataError` quando `candidates` era vuota (non più raggiungibile).
+  `additional_estimates` ora esclude le Prediction già coperte da una
+  `RiskSelection`, per non duplicare MATCH_RESULT/TOTAL_GOALS n/d sia nella
+  ladder che lì — resta riservato a CORNERS/CARDS. Frontend (`types.ts`,
+  `page.tsx`, `AlertPopover.tsx`, `BetSlip.tsx`, `match/[id]/page.tsx`)
+  aggiornato per `bookmaker_odds`/`value` nullable, renderizzati "n/d"; la
+  schedina automatica esclude le selezioni n/d (nessun prezzo reale da
+  moltiplicare). Audit dell'intero codebase per assunzioni simili: trovato un
+  solo altro punto (`app/backtest/runner.py`), lasciato deliberatamente
+  invariato perché il backtest valuta solo scommesse storicamente piazzabili,
+  problema diverso dal Decision Layer live.
+
+  Ri-verificato con le stesse due fixture reali di stanotte (Man United–Man
+  City, Napoli–Bologna): entrambe producono ora una ladder a 10 livelli
+  completa (Betfair fallisce ancora con lo stesso 403 reale, invariato), sia
+  via chiamata diretta sia via API/frontend — nuovi screenshot Playwright
+  mostrano le due fixture visibili in tabella con quota "n/d" e la pagina
+  dettaglio con la ladder completa, non più la pagina d'errore.
+  `VERIFICATION_LOG.md`/`ROADMAP.md`/`MODEL_SPEC.md`/`DATA_SOURCES.md`
+  aggiornati di conseguenza.
+
+  6 nuovi test dedicati (`test_decision_layer.py`: quota assente in
+  `compute_risk_raw`, ladder tutta n/d, ladder mista) + 3 test esistenti
+  riscritti per il nuovo comportamento invece del vecchio. 185 test passano,
+  lint pulito, build/typecheck frontend puliti.

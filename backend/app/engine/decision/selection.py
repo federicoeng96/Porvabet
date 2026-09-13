@@ -10,6 +10,13 @@ silently drops a level), but is upfront that in this slice the same underlying
 selection can legitimately be the best fit for more than one adjacent risk level;
 that stops being a meaningful limitation once more markets are added, which is
 exactly the roadmap-tracked next step, not a workaround to hide.
+
+A `Candidate` may have `bookmaker_odds=None` (no real quote from any source for
+that outcome) — the ladder is still built from whatever candidates exist purely
+on probability/uncertainty/reliability, `value` stays None ("n/d") rather than
+guessed, and ranking never fabricates a substitute market price (see
+`risk_score.compute_risk_raw`). See VERIFICATION_LOG.md for the real fixture
+that first required this.
 """
 
 from dataclasses import dataclass
@@ -25,7 +32,10 @@ class Candidate:
     market_label: str
     outcome_label: str
     probability: float
-    bookmaker_odds: float
+    bookmaker_odds: float | None  # None when no real quote exists anywhere for this
+    # outcome (Betfair unavailable and no historical closing odds) — the candidate
+    # still enters the ladder with model probability/fair odds, Value/risk-from-odds
+    # explicitly "n/d" rather than the whole analysis refusing to produce a ladder.
     fair_odds_value: float
     risk_factors: RiskFactors
     is_player_market: bool = False
@@ -36,7 +46,7 @@ class Candidate:
 class ScoredCandidate:
     candidate: Candidate
     risk_raw: float
-    value: float
+    value: float | None  # None exactly when candidate.bookmaker_odds is None
 
 
 @dataclass(frozen=True)
@@ -52,7 +62,11 @@ def score_candidates(candidates: list[Candidate]) -> list[ScoredCandidate]:
         ScoredCandidate(
             candidate=c,
             risk_raw=compute_risk_raw(c.risk_factors),
-            value=expected_value(c.probability, c.bookmaker_odds),
+            value=(
+                expected_value(c.probability, c.bookmaker_odds)
+                if c.bookmaker_odds is not None
+                else None
+            ),
         )
         for c in candidates
     ]
@@ -106,12 +120,20 @@ def build_risk_ladder(candidates: list[Candidate]) -> list[RiskLevelSelection]:
                 eligible = pool  # no eligible candidate exists anywhere — degrade gracefully
         # Prefer a market not already used as another level's main pick, then
         # by highest value, then by lowest uncertainty (a tighter estimate wins
-        # among equally-valued options).
+        # among equally-valued options). A candidate with no real quote has no
+        # `value` to rank by (never guessed) — treated as the lowest possible
+        # value for this tie-break only, so a priced candidate is still
+        # preferred over an n/d one when both are otherwise equally eligible;
+        # when every candidate in the pool is n/d (no market anywhere has a
+        # quote), this simply falls through to the uncertainty tie-break.
         fresh = [c for c in eligible if c.candidate.market_outcome_key not in used_market_keys_as_main]
         main_pool = fresh or eligible
         main = max(
             main_pool,
-            key=lambda c: (round(c.value, 6), -c.candidate.risk_factors.uncertainty),
+            key=lambda c: (
+                round(c.value, 6) if c.value is not None else float("-inf"),
+                -c.candidate.risk_factors.uncertainty,
+            ),
         )
         used_market_keys_as_main.add(main.candidate.market_outcome_key)
 
@@ -163,8 +185,10 @@ def _pick_alternatives(
 
 def _rationale(item: ScoredCandidate) -> str:
     c = item.candidate
+    odds_part = f"quota {c.bookmaker_odds:.2f}" if c.bookmaker_odds is not None else "quota n/d"
+    value_part = f"valore atteso {item.value:+.1%}" if item.value is not None else "valore atteso n/d"
     return (
         f"{c.market_label} — {c.outcome_label}: probabilità stimata {c.probability:.1%}, "
-        f"quota {c.bookmaker_odds:.2f}, valore atteso {item.value:+.1%}, "
+        f"{odds_part}, {value_part}, "
         f"incertezza {c.risk_factors.uncertainty:.0%}, qualità dati {c.risk_factors.data_quality:.0%}."
     )

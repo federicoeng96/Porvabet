@@ -38,7 +38,7 @@ def _selection_out(db: Session, prediction: Prediction, rationale: str) -> Selec
         bookmaker_odds=prediction.bookmaker_odds,
         bookmaker_name=prediction.bookmaker_name,
         fair_odds=prediction.fair_odds,
-        value=prediction.value or 0.0,
+        value=prediction.value,
         uncertainty=prediction.uncertainty,
         confidence=prediction.confidence,
         rationale=rationale,
@@ -55,18 +55,28 @@ def _selection_out(db: Session, prediction: Prediction, rationale: str) -> Selec
 
 
 def _no_odds_estimates_out(db: Session, analysis_version_id: int) -> list[NoOddsEstimateOut]:
-    """Every Prediction row with `bookmaker_odds=None` (by construction — see
-    `analysis_runner._build_candidates_and_predictions` and
-    `_persist_count_market_estimate`) is a market outcome with no real quote
-    to compute value/risk against: CORNERS/CARDS (no odds source integrated
-    for these markets at all) as well as MATCH_RESULT/TOTAL_GOALS whenever
-    the live odds provider had no liquid quote for that specific outcome.
-    One row per outcome (never paired OVER/UNDER only), so this also covers
-    MATCH_RESULT's three HOME/DRAW/AWAY outcomes correctly."""
+    """Every Prediction row with `bookmaker_odds=None` that is NOT already shown
+    inside the risk ladder (`RiskLevelOut`/`SelectionOut`) — today that means
+    CORNERS/CARDS only (`_persist_count_market_estimate`; no odds source
+    integrated for these markets at all, and they never enter the ladder).
+    MATCH_RESULT/TOTAL_GOALS outcomes without a quote are excluded here even
+    though they too have `bookmaker_odds=None`: since
+    `analysis_runner._build_candidates_and_predictions` now always builds a
+    Candidate for them (n/d or not — see VERIFICATION_LOG.md), they already
+    appear in `risk_levels` with `bookmaker_odds`/`value` = None, and listing
+    them again here would just duplicate the same row in two places."""
+    already_in_ladder = set(
+        db.scalars(
+            select(RiskSelection.prediction_id).where(
+                RiskSelection.analysis_version_id == analysis_version_id
+            )
+        ).all()
+    )
     predictions = db.scalars(
         select(Prediction).where(
             Prediction.analysis_version_id == analysis_version_id,
             Prediction.bookmaker_odds.is_(None),
+            Prediction.id.not_in(already_in_ladder),
         )
     ).all()
 

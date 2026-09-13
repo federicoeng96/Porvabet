@@ -32,10 +32,13 @@ export default function AlertPopover({
       </div>
       <div className="muted">Probabilità modello: {(selection.probability * 100).toFixed(1)}%</div>
       <div className="muted">
-        Quota bookmaker ({selection.bookmaker_name ?? "n/d"}): {selection.bookmaker_odds.toFixed(2)}
+        Quota bookmaker ({selection.bookmaker_name ?? "n/d"}):{" "}
+        {selection.bookmaker_odds !== null ? selection.bookmaker_odds.toFixed(2) : "n/d"}
       </div>
       <div className="muted">Quota fair stimata: {selection.fair_odds.toFixed(2)}</div>
-      <div className="muted">Valore/edge stimato: {(selection.value * 100).toFixed(1)}%</div>
+      <div className="muted">
+        Valore/edge stimato: {selection.value !== null ? `${(selection.value * 100).toFixed(1)}%` : "n/d"}
+      </div>
       <p style={{ marginTop: 8 }}>{alert.explanation}</p>
       <p className="muted" style={{ fontStyle: "italic" }}>
         Nota: questa è una stima del modello, non una garanzia che la quota sia sbagliata.

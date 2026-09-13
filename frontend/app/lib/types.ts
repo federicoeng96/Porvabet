@@ -9,10 +9,13 @@ export interface SelectionOut {
   market_label: string;
   outcome_label: string;
   probability: number;
-  bookmaker_odds: number;
+  // null ("n/d") when no market anywhere has a real quote for this outcome —
+  // the risk ladder still shows the row (probability/fair_odds always
+  // present), it just never fabricates a price. See VERIFICATION_LOG.md.
+  bookmaker_odds: number | null;
   bookmaker_name: string | null;
   fair_odds: number;
-  value: number;
+  value: number | null;
   uncertainty: number;
   confidence: number;
   rationale: string;

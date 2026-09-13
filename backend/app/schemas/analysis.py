@@ -14,10 +14,13 @@ class SelectionOut(BaseModel):
     market_label: str
     outcome_label: str
     probability: float
-    bookmaker_odds: float
+    # None ("n/d") when no market anywhere has a real quote for this outcome —
+    # the risk ladder is still built (probability/fair_odds always present), just
+    # never with a fabricated price. See VERIFICATION_LOG.md.
+    bookmaker_odds: float | None
     bookmaker_name: str | None
     fair_odds: float
-    value: float
+    value: float | None
     uncertainty: float
     confidence: float
     rationale: str
@@ -31,15 +34,15 @@ class RiskLevelOut(BaseModel):
 
 
 class NoOddsEstimateOut(BaseModel):
-    """A model probability/fair-odds estimate for a market outcome that
-    currently has no real bookmaker/exchange quote to compute value/risk
-    against — Value/Alert are explicitly "n/d" (never fabricated), and the
-    outcome never enters the risk ladder (`RiskLevelOut`), since that
-    requires a real price. One row per outcome — not a fixed OVER/UNDER
-    pair — so this covers both CORNERS/CARDS (no odds source at all for
-    these markets yet) and MATCH_RESULT/TOTAL_GOALS on a fixture where the
-    live odds provider (e.g. Betfair) has no liquid quote yet (common days
-    before kickoff), never a row silently missing. See DATA_SOURCES.md."""
+    """A model probability/fair-odds estimate for a market outcome that has no
+    real bookmaker/exchange quote AND is never part of the risk ladder
+    mechanism at all — today that means CORNERS/CARDS only (no odds source
+    integrated for these markets in this project, see DATA_SOURCES.md).
+    MATCH_RESULT/TOTAL_GOALS outcomes without a quote instead show up inside
+    `RiskLevelOut` itself (`SelectionOut.bookmaker_odds`/`value` = None, i.e.
+    "n/d") since those two markets always enter the ladder now, priced or not
+    — see VERIFICATION_LOG.md. One row per outcome — not a fixed OVER/UNDER
+    pair."""
 
     market_category: str
     market_label: str

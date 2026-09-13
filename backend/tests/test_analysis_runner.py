@@ -23,7 +23,7 @@ from app.ingestion.match_ingestion import (
 from app.models.enums import MarketCategory, MatchStatus, ModelFamily
 from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
-from app.models.prediction import AnalysisVersion, Prediction, RiskSelection
+from app.models.prediction import Alert, AnalysisVersion, Prediction, RiskSelection
 from app.providers.base.dto import HistoricalMatchRecord, OddsQuoteRecord
 
 SYNTHETIC_TEAMS = ["Synth A", "Synth B", "Synth C", "Synth D"]
@@ -229,22 +229,38 @@ def test_run_analysis_shows_nd_for_market_with_no_liquid_quote(db_session):
         assert pred.probability is not None  # model estimate still computed
         assert pred.fair_odds == pytest.approx(1.0 / pred.probability)
 
-    # Never enters the risk ladder (no RiskSelection for the n/d predictions).
+    # n/d candidates now legitimately enter the risk ladder too (ranked purely on
+    # probability/uncertainty/reliability, never a fabricated price — see
+    # VERIFICATION_LOG.md) — the invariant is not "never in the ladder" anymore,
+    # it's "if selected, still correctly n/d". With only 5 total candidates for
+    # 10 levels x up to 3 slots, they are in fact picked here (checked below,
+    # not just permitted) — proving the new code path actually runs, not just
+    # that it would be legal.
     nd_prediction_ids = {p.id for p in nd_predictions}
-    risk_selection_prediction_ids = {
-        rs.prediction_id
-        for rs in db_session.scalars(
-            select(RiskSelection).where(RiskSelection.analysis_version_id == analysis_version.id)
-        ).all()
-    }
-    assert nd_prediction_ids.isdisjoint(risk_selection_prediction_ids)
+    risk_selections = db_session.scalars(
+        select(RiskSelection).where(RiskSelection.analysis_version_id == analysis_version.id)
+    ).all()
+    risk_selection_prediction_ids = {rs.prediction_id for rs in risk_selections}
+    assert not nd_prediction_ids.isdisjoint(risk_selection_prediction_ids)
+    for rs in risk_selections:
+        if rs.prediction_id in nd_prediction_ids:
+            pred = db_session.get(Prediction, rs.prediction_id)
+            assert pred.bookmaker_odds is None
+            assert pred.value is None
 
 
 def test_run_analysis_survives_live_odds_provider_failure(db_session):
     """A provider raising (network down, bad response) must never abort the
     whole analysis — it degrades to whatever OddsQuote rows already exist
-    (none, here), which correctly yields InsufficientDataError rather than a
-    crash or fabricated data."""
+    (none, here). Previously this correctly yielded InsufficientDataError
+    (better to produce nothing than fabricate a price) — but a real fixture
+    with a real Betfair failure (see VERIFICATION_LOG.md) showed that
+    "produce nothing" also meant no n/d model probabilities at all, for the
+    normal case of a genuinely future match. Per an explicit product
+    decision, this must now still produce a full 10-level ladder with
+    Value/Alert = n/d everywhere, exactly like the "some markets missing a
+    quote" case already covered above — never a special exception for "zero
+    quotes everywhere"."""
     n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
     matches = _seed_matches(db_session, n_rounds=n_rounds)
     last_kickoff = matches[-1].kickoff_utc
@@ -266,9 +282,31 @@ def test_run_analysis_survives_live_odds_provider_failure(db_session):
 
     provider = _FakeLiveOddsProvider(raises=True)
 
-    with pytest.raises(InsufficientDataError):
-        run_analysis_for_match(db_session, future_match.id, odds_provider=provider)
+    result = run_analysis_for_match(db_session, future_match.id, odds_provider=provider)
+    db_session.flush()
     assert provider.calls == 1
+    assert len(result.risk_levels) == 10
+
+    analysis_version = db_session.scalar(
+        select(AnalysisVersion).where(AnalysisVersion.match_id == future_match.id)
+    )
+    predictions = db_session.scalars(
+        select(Prediction).where(Prediction.analysis_version_id == analysis_version.id)
+    ).all()
+    assert len(predictions) == 5  # 3 MATCH_RESULT + 2 TOTAL_GOALS, all n/d
+    for pred in predictions:
+        assert pred.bookmaker_odds is None
+        assert pred.value is None
+        assert pred.probability is not None  # model estimate still computed, never withheld
+
+    # No Alert anywhere — a discrepancy vs the market can't be computed without a
+    # real market price to compare against.
+    assert (
+        db_session.scalars(
+            select(Alert).join(Prediction).where(Prediction.analysis_version_id == analysis_version.id)
+        ).first()
+        is None
+    )
 
 
 def _well_calibrated_full_range_bets() -> list[BetRecord]:

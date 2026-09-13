@@ -933,11 +933,14 @@ non ancora `FINISHED`, `run_analysis_for_match` interroga la catena di
 provider quote (Betfair per primo — v. `build_default_odds_provider_chain`
 in `app/providers/base/odds_provider_chain.py`) e persiste quanto trovato
 come nuove righe `OddsQuote`. Se Betfair (o qualunque provider) non ha una
-quota liquida per un mercato, quel mercato semplicemente non produce un
-`Candidate`/`Prediction` con valore reale — comportamento già esistente e
-invariato (mai fabbricato), lo stesso già in uso per corner/cartellini
-tramite `additional_estimates` (probabilità del modello, senza quota/valore/alert
-= "n/d").
+quota liquida per un mercato — incluso il caso limite in cui NESSUN mercato
+ne ha una da nessuna fonte, il caso normale per una fixture reale in questa
+sandbox (v. VERIFICATION_LOG.md) — quel mercato produce comunque un
+`Candidate`/`Prediction` con probabilità/quota-modello reali, solo senza un
+valore/quota bookmaker (mai fabbricato): Value/Alert = "n/d", stesso
+principio già in uso per corner/cartellini tramite `additional_estimates`,
+ma con il `Candidate` che partecipa comunque alla risk ladder invece di
+starne fuori.
 
 ### FantaLab — moduli/titolari/tiratori/ballottaggi (Serie A) — **ACCANTONATO**
 

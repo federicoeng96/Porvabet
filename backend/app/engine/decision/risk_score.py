@@ -25,7 +25,10 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class RiskFactors:
     probability: float  # model probability of the outcome, (0, 1]
-    bookmaker_odds: float  # decimal odds, > 1
+    bookmaker_odds: float | None  # decimal odds, > 1 — None when no real market price
+    # exists for this outcome from any source (see Candidate.bookmaker_odds); the
+    # odds_magnitude factor below is then never guessed, its weight is redistributed
+    # across the other (known) factors instead — see compute_risk_raw.
     uncertainty: float  # 0..1, model's own uncertainty about `probability` (e.g. from posterior/CI width)
     data_quality: float  # 0..1, 1 = complete/reliable inputs, 0 = sparse/unreliable
     model_reliability: float  # 0..1, from the real backtest calibration curve for this
@@ -52,18 +55,35 @@ assert abs(sum(WEIGHTS.values()) - 1.0) < 1e-9
 
 def compute_risk_raw(factors: RiskFactors) -> float:
     improbability = 1.0 - factors.probability
-    # log-odds normalized against a generous 1..15 decimal-odds range so typical
-    # football markets span most of [0, 1] without long-odds outliers saturating it.
-    odds_magnitude = _clip01(_log_scale(factors.bookmaker_odds, low=1.01, high=15.0))
+
+    if factors.bookmaker_odds is None:
+        # No real market price for this candidate anywhere (see
+        # Candidate.bookmaker_odds/RiskFactors.bookmaker_odds) — never fabricate an
+        # odds_magnitude value to fill this factor (e.g. from the model's own fair
+        # odds, which would just double-count `improbability` under a different
+        # name). Instead redistribute its weight proportionally across the factors
+        # we can actually observe, same "never guess a number we don't have" rule
+        # used everywhere else in this module/project.
+        weights = {k: w for k, w in WEIGHTS.items() if k != "odds_magnitude"}
+        remaining = sum(weights.values())
+        weights = {k: w / remaining for k, w in weights.items()}
+        odds_term = 0.0
+    else:
+        weights = WEIGHTS
+        # log-odds normalized against a generous 1..15 decimal-odds range so typical
+        # football markets span most of [0, 1] without long-odds outliers saturating it.
+        odds_term = weights["odds_magnitude"] * _clip01(
+            _log_scale(factors.bookmaker_odds, low=1.01, high=15.0)
+        )
 
     score = (
-        WEIGHTS["improbability"] * improbability
-        + WEIGHTS["odds_magnitude"] * odds_magnitude
-        + WEIGHTS["uncertainty"] * _clip01(factors.uncertainty)
-        + WEIGHTS["data_quality"] * (1.0 - _clip01(factors.data_quality))
-        + WEIGHTS["model_reliability"] * (1.0 - _clip01(factors.model_reliability))
-        + WEIGHTS["instability"] * (1.0 - _clip01(factors.prediction_stability))
-        + WEIGHTS["lineup_dependency"] * _clip01(factors.lineup_dependency)
+        weights["improbability"] * improbability
+        + odds_term
+        + weights["uncertainty"] * _clip01(factors.uncertainty)
+        + weights["data_quality"] * (1.0 - _clip01(factors.data_quality))
+        + weights["model_reliability"] * (1.0 - _clip01(factors.model_reliability))
+        + weights["instability"] * (1.0 - _clip01(factors.prediction_stability))
+        + weights["lineup_dependency"] * _clip01(factors.lineup_dependency)
     )
     return _clip01(score)
 

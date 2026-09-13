@@ -171,11 +171,95 @@ raggiunto per queste due fixture specifiche nello stato attuale.
 
 Screenshot inviati separatamente in chat.
 
+## 7. Decisione presa e fix implementato
+
+L'utente ha scelto l'opzione **B** del punto 4: quando nessun mercato ha una
+quota reale da nessuna fonte, il Decision Layer deve produrre comunque la risk
+ladder completa (10 livelli, 1 principale + 2 alternative), con probabilità/
+quota-modello sempre presenti e Value/Alert = "n/d" ovunque — nessuna eccezione
+speciale per il caso limite "zero quote ovunque", stessa identica logica già
+implementata per "alcuni mercati senza quota", solo estesa.
+
+**Implementazione** (`app/engine/decision/selection.py`, `risk_score.py`,
+`analysis_runner.py`, `schemas/analysis.py`, `api/routers/matches.py` +
+equivalenti frontend):
+- `Candidate.bookmaker_odds`/`RiskFactors.bookmaker_odds`/`ScoredCandidate.value`
+  diventano `float | None`. `_build_candidates_and_predictions` ora costruisce
+  **sempre** un `Candidate` per ogni esito MATCH_RESULT/TOTAL_GOALS (5 esiti,
+  incondizionatamente), con quota reale quando esiste, altrimenti
+  `bookmaker_odds=None`/`value=None` — mai più un ramo che salta la
+  costruzione del `Candidate`.
+- `risk_score.compute_risk_raw`: quando `bookmaker_odds` è `None`, il peso del
+  fattore "odds_magnitude" (10%) viene **redistribuito proporzionalmente** sugli
+  altri fattori reali (probabilità, incertezza, affidabilità modello, ecc.) —
+  mai un prezzo sostitutivo inventato (es. la fair odds del modello stesso,
+  che avrebbe solo duplicato "improbability" sotto altro nome).
+- La riga `if not candidates: raise InsufficientDataError(...)` in
+  `run_analysis_for_match` è stata **rimossa**: `candidates` non è più mai
+  vuota una volta che il modello ha fatto fit (i due controlli
+  `InsufficientDataError` legittimi — storico insufficiente, squadra mai vista
+  — restano invariati, sono un problema diverso).
+- `_no_odds_estimates_out` (endpoint `additional_estimates`) ora esclude le
+  Prediction già coperte da una `RiskSelection`, per non duplicare la stessa
+  riga sia nella ladder sia in "stime senza quota" — che resta quindi
+  riservato a CORNERS/CARDS, mai parte del meccanismo ladder.
+- Frontend (`types.ts`, `page.tsx`, `AlertPopover.tsx`, `BetSlip.tsx`,
+  `match/[id]/page.tsx`): `bookmaker_odds`/`value` nullable ovunque, renderizzati
+  come "n/d"; la schedina automatica esclude le selezioni principali n/d (nessun
+  prezzo reale con cui calcolare una quota totale), pur restando visibili e
+  navigabili in tabella.
+
+**Audit di coerenza** (richiesto esplicitamente): cercato ogni altro punto con
+la stessa assunzione "serve almeno una quota". Trovato un solo altro punto,
+`app/backtest/runner.py` (`_build_candidates`) — **deliberatamente lasciato
+invariato**: il backtest valuta solo scommesse effettivamente piazzabili
+storicamente (quota di chiusura reale sempre presente per dati football-data.co.uk),
+quindi "salta la partita se non c'è quota" resta l'unico comportamento corretto
+lì — non è lo stesso problema del Decision Layer live, che deve invece mostrare
+qualcosa anche per una fixture futura reale senza quota ancora pubblicata.
+
+**Ri-verificato con le stesse due fixture reali di prima** (Man United–Man
+City, Napoli–Bologna), stesso identico giro (fixture → Dixon-Coles → tentativo
+Betfair → Decision Layer):
+
+```
+=== Running analysis for match 7612 ===
+[stesso 403 reale di Betfair, invariato]
+OK: risk_levels computed = 10   count_market_estimates = 2
+=== Running analysis for match 7615 ===
+[stesso 403 reale di Betfair, invariato]
+OK: risk_levels computed = 10   count_market_estimates = 2
+```
+
+Contenuto reale di un livello (`GET /matches/7612`, livello 1):
+`main` = 1X2 AWAY, probabilità 58.7%, `bookmaker_odds: null`, `value: null`,
+`alert: null`, rationale "quota n/d, valore atteso n/d" — e lo stesso per le 2
+alternative. `additional_estimates` mostra solo CORNERS/CARDS (2+2 righe), come
+da disegno. Confermato via `GET /matches?risk_level=5`: entrambe le fixture
+reali ora compaiono nella tabella principale con quota "n/d" invece di essere
+assenti.
+
+**Frontend, Playwright, dati reali**: nuovi screenshot (inviati in chat)
+mostrano la homepage con le due fixture reali visibili in tabella (quota
+"n/d", escluse dalla schedina automatica) e le pagine dettaglio con la ladder
+completa (selezione principale + 2 alternative, tutte n/d) al posto della
+pagina d'errore "nessuna analisi disponibile" di prima.
+
+**Test**: 3 nuovi test dedicati in `tests/test_decision_layer.py` (risk score
+con quota assente, ladder tutta n/d, ladder mista priced/n/d) + i 3 test
+esistenti che assumevano il vecchio comportamento riscritti per il nuovo
+(`test_run_analysis_shows_nd_for_market_with_no_liquid_quote`,
+`test_run_analysis_survives_live_odds_provider_failure`,
+`test_match_detail_exposes_nd_estimates_for_markets_without_a_quote`). 185
+test passano, lint pulito, build/typecheck frontend puliti.
+
 ## Conclusione onesta
 
-Reale, verificato end-to-end oggi: ingestione fixture, mapping nomi squadra,
-motore statistico, tentativo Betfair (fallito come atteso), frontend con dati
-reali (storici). **Non raggiunto**, per una scelta di design preesistente ora
-resa visibile per la prima volta da un dato reale: "n/d" e precompute rischio
-per una fixture futura senza alcuna quota da nessuna fonte. Decisione
-sull'opzione A/B sopra rimandata all'utente.
+Reale, verificato end-to-end oggi, in due giri: ingestione fixture, mapping
+nomi squadra, motore statistico, tentativo Betfair (fallito come atteso),
+frontend con dati reali. Il primo giro ha trovato un limite architetturale
+reale (analisi interrotta quando zero mercati hanno una quota); il secondo,
+dopo una decisione esplicita dell'utente e la relativa implementazione, mostra
+**la ladder a 10 livelli completa con Value/Alert "n/d"** per entrambe le
+fixture reali, visibili e navigabili in tabella e in pagina dettaglio — non
+più un errore, non più un'assenza silenziosa, mai un prezzo inventato.

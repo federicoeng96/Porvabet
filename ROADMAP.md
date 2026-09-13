@@ -30,25 +30,26 @@ cosa esiste nel codice. Tre categorie, nessuna ambiguità tra "esiste" e
 - Corriere dello Sport (moduli tattici Serie A): verificato dal vivo contro
   la pagina reale, provider funzionante e testato — ma non ancora collegato
   a `run_analysis_for_match`/`lineup_reconciliation.py` (v. punto 7 sotto).
-
-**🔨 Costruito e testato con mock/dati sintetici, verificato dal vivo il
-13/09 — con un risultato reale diverso da quello sperato**:
-- Decision Layer "n/d" (mai riga saltata quando manca una quota): il
-  meccanismo stesso esiste ed è testato, ma il primo vero giro end-to-end
-  con una fixture futura reale (Man United–Man City, Napoli–Bologna, 13/09
-  — v. `VERIFICATION_LOG.md`) ha trovato che **oggi non viene mai
-  raggiunto** per una fixture genuinamente futura in questa sandbox: quando
-  letteralmente nessun mercato ha una quota (Betfair bloccato + nessuna
-  quota storica, il caso normale qui), `run_analysis_for_match` interrompe
-  l'intera analisi con `InsufficientDataError` invece di salvare le righe
-  "n/d" — comportamento preesistente e deliberatamente testato (non un bug
-  di stanotte), ma le sue conseguenze reali (nessuna fixture futura appare
-  mai nel frontend da questa sandbox) si vedono solo ora. **Decisione
-  dell'utente richiesta** su come procedere (v. `VERIFICATION_LOG.md`
-  sezione 4 per le due opzioni) — non presa autonomamente.
+- **Decision Layer "n/d" anche quando NESSUN mercato ha una quota, 13/09**:
+  il primo vero giro end-to-end con una fixture futura reale (Man United–Man
+  City, Napoli–Bologna) aveva trovato che l'analisi si interrompeva con un
+  errore invece di mostrare "n/d" quando letteralmente nessun mercato ha una
+  quota da nessuna fonte (il caso normale per ogni fixture futura reale in
+  questa sandbox) — comportamento preesistente e deliberatamente testato,
+  non un bug introdotto quella notte, ma mai visto in azione prima. Decisione
+  esplicita dell'utente: estendere lo stesso principio già in uso per "alcuni
+  mercati senza quota" anche a questo caso limite, nessuna eccezione speciale.
+  Implementato e ri-verificato con le stesse due fixture reali: la risk ladder
+  a 10 livelli ora si costruisce sempre, Value/Alert "n/d" ovunque manchi una
+  quota, mai un prezzo inventato — v. `VERIFICATION_LOG.md` sezione 7 per il
+  dettaglio completo (redistribuzione del peso rischio quando l'odds non
+  esiste, `additional_estimates` ridotto a CORNERS/CARDS per non duplicare,
+  audit dell'intero codebase per assunzioni simili).
 - `BetfairExchangeOddsProvider`: login/richiesta reale confermati di nuovo
   il 13/09 contro una fixture reale — bloccato dalla rete della sandbox
   (v. bloccato sotto), non dal codice.
+
+**🔨 Costruito e testato con mock/dati sintetici, mai verificato dal vivo**:
 - Intelligence Engine (`app/engine/intelligence/`): livello di validazione
   costruito e testato, nessuna fonte reale di segnali collegata.
 
@@ -153,15 +154,19 @@ cosa esiste nel codice. Tre categorie, nessuna ambiguità tra "esiste" e
     sandbox (non un problema di credenziali/codice — v. `DATA_SOURCES.md`/
     `RUNNING_LOCALLY.md`). Corner/cartellini restano "n/d": indagati a
     fondo, non verificabili da questa sandbox (v. punto sotto).
-19. ✅ **"n/d" esplicito invece di riga saltata (per riga con almeno un'altra
-    quota) + fixture future reali**: il Decision Layer mostra sempre
-    probabilità/quota-modello per MATCH_RESULT/TOTAL_GOALS anche senza quota
-    liquida su QUELLA riga (mai una riga assente, mai un prezzo inventato —
-    v. `NoOddsEstimateOut`); **ma** v. "Quadro onesto" sopra e
-    `VERIFICATION_LOG.md` per il caso reale trovato il 13/09 in cui NESSUN
-    mercato ha una quota — lì l'intera analisi si interrompe invece di
-    mostrare "n/d" ovunque, comportamento preesistente ora reso visibile,
-    decisione dell'utente richiesta. `FootballDataOrgFixtureProvider`
+19. ✅ **"n/d" esplicito invece di riga saltata, anche quando NESSUN mercato
+    ha una quota + fixture future reali**: il Decision Layer mostra sempre
+    probabilità/quota-modello per MATCH_RESULT/TOTAL_GOALS (mai una riga
+    assente, mai un prezzo inventato — v. `NoOddsEstimateOut`/`SelectionOut`).
+    Un giro reale il 13/09 aveva trovato un caso limite non coperto: quando
+    NESSUN mercato ha una quota da nessuna fonte, l'analisi si interrompeva
+    con un errore invece di mostrare "n/d" ovunque — comportamento
+    preesistente reso visibile per la prima volta da una fixture vera, non
+    un bug di quella notte. Su decisione esplicita dell'utente, generalizzato:
+    ora la risk ladder si costruisce sempre, priced o no, con lo stesso
+    principio già in uso — v. `VERIFICATION_LOG.md` sezione 7 per il dettaglio
+    completo (implementazione, audit di coerenza, ri-verifica con le stesse
+    fixture reali). `FootballDataOrgFixtureProvider`
     (categoria A) popola la prossima giornata reale Premier League/Serie A —
     **testato dal vivo con una chiamata autenticata reale il 13/09** (9
     fixture EPL+Serie A ingerite, chiave risolta — v. `VERIFICATION_LOG.md`

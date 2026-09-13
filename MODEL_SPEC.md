@@ -124,14 +124,21 @@ escluse per motivi diversi, non per la stessa causa. Di conseguenza:
   frontend, etichettate esplicitamente come "stima statistica, nessuna quota
   di mercato disponibile" — mai presentate come una selezione scommettibile
   con value calcolato.
-- **Lo stesso meccanismo è stato generalizzato** (v. ROADMAP.md) a
-  MATCH_RESULT/TOTAL_GOALS: quando un mercato ha una quota Betfair liquida,
-  entra normalmente nella risk ladder come prima; quando non ce l'ha ancora
-  (comune per una partita lontana dal kickoff), il modello mostra comunque
-  probabilità/quota-fair nello stesso `additional_estimates` — mai una riga
-  assente, mai un prezzo inventato. `NoOddsEstimateOut` è quindi un tipo
-  generico (un esito per riga, non solo coppie Over/Under), non più
-  specifico a corner/cartellini.
+- **Lo stesso principio è stato generalizzato ulteriormente** (v. ROADMAP.md
+  e VERIFICATION_LOG.md) a MATCH_RESULT/TOTAL_GOALS, in due passi. Primo:
+  quando un mercato ha una quota Betfair liquida entra normalmente nella
+  risk ladder; quando non ce l'ha ancora (comune per una partita lontana dal
+  kickoff) il modello mostra comunque probabilità/quota-fair. Secondo (dopo
+  che un vero giro end-to-end su una fixture reale ha mostrato che il caso
+  limite "NESSUN mercato ha una quota da nessuna fonte" interrompeva
+  l'intera analisi con un errore): questi due mercati **entrano sempre nella
+  risk ladder stessa**, priced o no — un `Candidate` senza quota reale vi
+  partecipa con `bookmaker_odds=None`/Value "n/d", ranked solo su
+  probabilità/incertezza/affidabilità (mai un prezzo sostitutivo inventato,
+  v. `risk_score.compute_risk_raw`). `additional_estimates`
+  (`NoOddsEstimateOut`) resta quindi riservato a mercati mai parte del
+  meccanismo ladder — oggi solo CORNERS/CARDS, che restano "volutamente
+  esclusi dalla risk ladder" come descritto sopra.
 - Le linee usate (9.5 corner, 3.5 cartellini) sono le **linee convenzionali
   note nel mercato delle scommesse sportive** (dominio pubblico, non il prezzo
   proprietario di un bookmaker), scelte solo per esprimere la probabilità del
