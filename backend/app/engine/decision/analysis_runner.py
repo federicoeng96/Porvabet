@@ -74,7 +74,22 @@ def run_analysis_for_match(
     match_id: int,
     trigger: str = "manual_refresh",
     odds_provider: OddsProvider | None = None,
+    model_fit_cache: dict | None = None,
 ) -> AnalysisResult:
+    """`model_fit_cache`, when provided, lets `analyze_matches_batch` share one
+    fitted DixonColesModel/count-market fit across every match in the batch
+    that has the exact same (competition_id, kickoff_utc) — i.e. shares a
+    kickoff slot, a common real-world case (several fixtures kick off at the
+    same time). Refitting per match was measured at ~2.2s (goals model) +
+    ~3.7s (corners+cards) against this project's real 10-season dataset — a
+    real, significant cost for a batch of many real fixtures (see
+    CHANGELOG.md's performance-audit entry). Left as `None` (no caching, fit
+    fresh every call) for the single-match `/analyze` endpoint and every
+    existing test, so this is purely additive: identical behavior unless a
+    caller opts in. Keying on the exact kickoff timestamp (not just the date)
+    is what keeps this always correct — two matches only share a cache entry
+    when `_load_training_matches`/`_load_count_training_matches` would
+    deterministically produce the exact same training set for both."""
     match = db.get(Match, match_id)
     if match is None:
         raise ValueError(f"Match {match_id} not found")
@@ -88,6 +103,10 @@ def run_analysis_for_match(
         provider = odds_provider if odds_provider is not None else build_default_odds_provider_chain()
         _refresh_live_odds_for_match(db, match, provider)
 
+    from app.models.core import Season
+
+    competition_id = db.get(Season, match.season_id).competition_id
+
     training_matches = _load_training_matches(db, match)
     if len(training_matches) < MIN_TRAINING_MATCHES:
         raise InsufficientDataError(
@@ -96,8 +115,14 @@ def run_analysis_for_match(
             f"prediction from insufficient history."
         )
 
-    model = DixonColesModel()
-    model.fit(training_matches, as_of=match.kickoff_utc.date())
+    goals_cache_key = ("goals", competition_id, match.kickoff_utc)
+    if model_fit_cache is not None and goals_cache_key in model_fit_cache:
+        model = model_fit_cache[goals_cache_key]
+    else:
+        model = DixonColesModel()
+        model.fit(training_matches, as_of=match.kickoff_utc.date())
+        if model_fit_cache is not None:
+            model_fit_cache[goals_cache_key] = model
 
     model_version = _get_or_create_model_version(db, match, model)
 
@@ -121,9 +146,6 @@ def run_analysis_for_match(
     db.add(analysis_version)
     db.flush()
 
-    from app.models.core import Season
-
-    competition_id = db.get(Season, match.season_id).competition_id
     candidates, prediction_rows = _build_candidates_and_predictions(
         db, match, model, model_version, analysis_version, uncertainty, competition_id
     )
@@ -173,7 +195,7 @@ def run_analysis_for_match(
             }
         )
 
-    count_estimates = compute_count_market_estimates(db, match)
+    count_estimates = compute_count_market_estimates(db, match, model_fit_cache=model_fit_cache)
     for estimate in count_estimates:
         count_model_version = _get_or_create_count_model_version(db, match, estimate)
         _persist_count_market_estimate(db, match, count_model_version, analysis_version, estimate)

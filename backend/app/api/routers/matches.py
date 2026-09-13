@@ -121,15 +121,19 @@ def list_matches_at_risk_level(risk_level: int = 5, db: Session = Depends(get_db
         raise HTTPException(400, "risk_level must be between 1 and 10")
 
     rows = []
-    matches = db.scalars(select(Match).order_by(Match.kickoff_utc)).all()
-    for match in matches:
-        analysis_version = db.scalar(
-            select(AnalysisVersion).where(
-                AnalysisVersion.match_id == match.id, AnalysisVersion.is_current.is_(True)
-            )
-        )
-        if analysis_version is None:
-            continue
+    # Join straight to Match/AnalysisVersion instead of scanning every match
+    # ever ingested (10 seasons of historical results) and querying each one
+    # individually for a current analysis — that was a real N+1 found during
+    # this session's performance audit (7733 SQL queries for 18 actual rows
+    # against the real dev DB — see CHANGELOG.md). This alone cuts the table
+    # scan down to just the matches that actually have a current analysis.
+    matches_with_analysis = db.execute(
+        select(Match, AnalysisVersion)
+        .join(AnalysisVersion, AnalysisVersion.match_id == Match.id)
+        .where(AnalysisVersion.is_current.is_(True))
+        .order_by(Match.kickoff_utc)
+    ).all()
+    for match, analysis_version in matches_with_analysis:
         main_selection = db.scalar(
             select(RiskSelection).where(
                 RiskSelection.analysis_version_id == analysis_version.id,
@@ -240,10 +244,17 @@ def analyze_matches_batch(payload: BatchAnalyzeRequest, db: Session = Depends(ge
 
     results: list[BatchRefreshItemOut] = []
     succeeded = insufficient_data = failed = 0
+    # Shared across every match in this one request: matches that fall on the
+    # exact same (competition, kickoff) reuse the same fitted model instead of
+    # refitting from scratch — a real, measured cost (see
+    # run_analysis_for_match's model_fit_cache docstring / CHANGELOG.md).
+    # Independent of, and unaffected by, the per-match db.rollback() below —
+    # fitted models live in this plain dict, not in the DB session.
+    model_fit_cache: dict = {}
 
     for match_id in match_ids:
         try:
-            result = run_analysis_for_match(db, match_id)
+            result = run_analysis_for_match(db, match_id, model_fit_cache=model_fit_cache)
             db.commit()
             succeeded += 1
             results.append(

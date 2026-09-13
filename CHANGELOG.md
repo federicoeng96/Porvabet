@@ -541,3 +541,63 @@ completi — è un indice.
   lo stile di questo progetto ("non validare scenari che non possono
   accadere"); documentato qui come rischio residuo teorico, non come bug.
   241 test passano (4 nuovi), lint pulito.
+- **Audit qualità: performance su più partite reali contemporaneamente** —
+  la domanda esplicita dell'utente ("il precompute a 10 livelli per molte
+  fixture insieme"). Misurato tutto contro i dati reali già nel database di
+  sviluppo (7600+ partite storiche, 10 stagioni), non solo stimato:
+  - **`GET /matches` (tabella principale) — il bug più grave trovato in
+    questo audit**: l'endpoint iterava su OGNI partita mai ingerita (10
+    stagioni di risultati storici) invece che solo sulle partite con
+    un'analisi corrente, interrogando il database una volta per ogni
+    partita per verificare se avesse un'analisi — misurato **7733 query SQL
+    per 18 righe reali restituite**. Corretto con una singola query JOIN
+    diretta `Match`/`AnalysisVersion` invece di scansionare tutto: **124
+    query per le stesse 18 righe** (62 volte meno). Peggiorava
+    progressivamente a ogni stagione aggiuntiva ingerita — ora è
+    indipendente dalla quantità di storico.
+  - **`count_market_estimates.py::_load_count_training_matches`**: N+1 query
+    reale — una query `TeamMatchStats` per ogni partita storica dentro un
+    ciclo Python invece di una query in batch, misurato **~3800 round-trip
+    individuali** (una history completa), chiamato due volte per ogni
+    partita analizzata (corner + cartellini). Corretto con una singola
+    query batch (`WHERE match_id IN (...)`), poi raggruppata in Python:
+    tempo di calcolo delle stime corner/cartellini sceso da **7.68s a
+    3.67s** per partita. Nuovo test di regressione che conta le query SQL
+    reali (guardia contro una futura reintroduzione dell'N+1).
+  - **Refit ridondante del modello per un batch di più partite reali**: sia
+    `DixonColesModel` (mercato 1X2/Over-Under) sia `PoissonCountModel`
+    (corner/cartellini) venivano rifittati da zero per OGNI partita
+    analizzata in un batch, anche quando più partite della stessa
+    competizione condividono esattamente lo stesso set di allenamento (es.
+    più partite con lo stesso orario di calcio d'inizio, comune nel calcio
+    reale). Misurato contro i dati reali: **~2.2s per il fit Dixon-Coles +
+    ~3.7s per i due fit corner/cartellini ≈ 10s per partita**, moltiplicato
+    per ogni partita di un batch — il pulsante "AGGIORNA ANALISI" (che già
+    usa `analyze-batch`, non N chiamate parallele, per la scelta fatta nella
+    roadmap item 10) avrebbe richiesto minuti per un turno completo di
+    partite reali. Aggiunto un parametro opzionale `model_fit_cache` (mai
+    attivo di default — nessun cambiamento di comportamento per l'endpoint
+    singolo `/analyze` né per nessun test esistente) condiviso da
+    `analyze_matches_batch` tra tutte le partite dello stesso batch: due
+    partite con la stessa competizione e lo stesso orario esatto di calcio
+    d'inizio (chiave di cache rigorosa, mai un'approssimazione per data —
+    garantisce che il set di allenamento sia sempre identico, non solo
+    simile) riusano lo stesso modello già fittato invece di rifittarlo.
+    Verificato con test dedicati che contano le chiamate a `.fit()` (una
+    sola volta condivisa, non una per partita) sia per il modello dei gol
+    sia per i due modelli corner/cartellini, oltre a un test che conferma
+    che senza cache il comportamento resta invariato (ogni chiamata rifitta,
+    esattamente come prima di questa ottimizzazione).
+  - Verificato anche cosa NON è stato corretto in questo giro, con la
+    stessa misurazione reale: `GET /matches/{id}` (pagina dettaglio) fa
+    circa 138 query SQL per singola partita — un N+1 minore ma reale
+    (~3 selezioni × 10 livelli, `_selection_out` non battuta), NON corretto
+    perché non peggiora con la crescita dello storico (è limitato alla
+    struttura fissa a 10 livelli di una singola partita, non scala con il
+    database) — categoria di problema diversa da quelli sopra, a priorità
+    più bassa, documentata qui onestamente.
+  246 test passano (7 nuovi), lint pulito. Verificato anche end-to-end
+  contro 4 fixture reali già in database (Coventry-Brighton, Man
+  United-Man City, Leeds-Newcastle, Lecce-Monza): 3 analizzate con successo,
+  nessun crash, comportamento identico a prima delle correzioni (stesso
+  fallimento Betfair 403 già noto e documentato).

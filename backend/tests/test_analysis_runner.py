@@ -376,6 +376,98 @@ def _match_result_home_risk_raw(db_session, analysis_version_id: int) -> float |
     return row[0] if row else None
 
 
+def test_model_fit_cache_reuses_the_fit_across_matches_sharing_a_kickoff_slot(db_session, monkeypatch):
+    """Performance-audit finding (see CHANGELOG.md): refitting Dixon-Coles from
+    scratch for every match was measured at ~2.2s against the real 10-season
+    dataset. Two matches that kick off at the exact same timestamp in the same
+    competition deterministically share the same training set, so
+    `model_fit_cache` must fit only once for both, not twice."""
+    from app.engine.statistical.dixon_coles import DixonColesModel
+
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+    shared_kickoff = last_kickoff + timedelta(days=7)
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    team_a = get_or_create_team(db_session, "Synth A")
+    team_b = get_or_create_team(db_session, "Synth B")
+    team_c = get_or_create_team(db_session, "Synth C")
+    team_d = get_or_create_team(db_session, "Synth D")
+    match_1 = Match(
+        season_id=season.id, home_team_id=team_a.id, away_team_id=team_b.id,
+        kickoff_utc=shared_kickoff, status=MatchStatus.SCHEDULED,
+        external_ref="synth:cache-test:1",
+    )
+    match_2 = Match(
+        season_id=season.id, home_team_id=team_c.id, away_team_id=team_d.id,
+        kickoff_utc=shared_kickoff, status=MatchStatus.SCHEDULED,
+        external_ref="synth:cache-test:2",
+    )
+    db_session.add_all([match_1, match_2])
+    db_session.flush()
+
+    fit_calls = 0
+    original_fit = DixonColesModel.fit
+
+    def counting_fit(self, *args, **kwargs):
+        nonlocal fit_calls
+        fit_calls += 1
+        return original_fit(self, *args, **kwargs)
+
+    monkeypatch.setattr(DixonColesModel, "fit", counting_fit)
+
+    cache: dict = {}
+    result_1 = run_analysis_for_match(db_session, match_1.id, model_fit_cache=cache)
+    db_session.flush()
+    result_2 = run_analysis_for_match(db_session, match_2.id, model_fit_cache=cache)
+    db_session.flush()
+
+    assert fit_calls == 1  # shared, not refit for match_2
+    assert len(result_1.risk_levels) == 10
+    assert len(result_2.risk_levels) == 10
+
+
+def test_model_fit_cache_omitted_still_refits_every_time(db_session, monkeypatch):
+    """Backward-compatibility guarantee: no cache passed (the single-match
+    `/analyze` endpoint's behavior) means every call fits fresh, exactly as
+    before this optimization existed."""
+    from app.engine.statistical.dixon_coles import DixonColesModel
+
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+    shared_kickoff = last_kickoff + timedelta(days=7)
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    team_a = get_or_create_team(db_session, "Synth A")
+    team_b = get_or_create_team(db_session, "Synth B")
+    match_1 = Match(
+        season_id=season.id, home_team_id=team_a.id, away_team_id=team_b.id,
+        kickoff_utc=shared_kickoff, status=MatchStatus.SCHEDULED,
+        external_ref="synth:no-cache-test:1",
+    )
+    db_session.add(match_1)
+    db_session.flush()
+
+    fit_calls = 0
+    original_fit = DixonColesModel.fit
+
+    def counting_fit(self, *args, **kwargs):
+        nonlocal fit_calls
+        fit_calls += 1
+        return original_fit(self, *args, **kwargs)
+
+    monkeypatch.setattr(DixonColesModel, "fit", counting_fit)
+
+    run_analysis_for_match(db_session, match_1.id)  # no model_fit_cache passed
+    db_session.flush()
+
+    assert fit_calls == 1
+
+
 def test_rerunning_analysis_supersedes_previous_version(db_session):
     n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
     matches = _seed_matches(db_session, n_rounds=n_rounds)

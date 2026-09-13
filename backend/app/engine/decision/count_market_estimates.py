@@ -55,18 +55,31 @@ class CountMarketEstimate:
     note: str = NO_ODDS_NOTE
 
 
-def compute_count_market_estimates(db: Session, match: Match) -> list[CountMarketEstimate]:
+def compute_count_market_estimates(
+    db: Session, match: Match, model_fit_cache: dict | None = None
+) -> list[CountMarketEstimate]:
+    """`model_fit_cache`, when provided, lets `analyze_matches_batch` share one
+    fitted PoissonCountModel per (category, competition, kickoff) across every
+    match in a batch that shares a kickoff slot — same rationale/correctness
+    argument as `analysis_runner.run_analysis_for_match`'s `model_fit_cache`
+    (see its docstring). `None` (the default) preserves the original
+    always-refit behavior for every existing caller/test."""
+    from app.models.core import Season
+
+    competition_id = db.get(Season, match.season_id).competition_id
     estimates: list[CountMarketEstimate] = []
 
     corners_matches = _load_count_training_matches(db, match, _corners_extractor)
     corners_estimate = _try_fit_and_estimate(
-        "CORNERS", corners_matches, match, STANDARD_LINES["CORNERS"]
+        "CORNERS", corners_matches, match, STANDARD_LINES["CORNERS"], competition_id, model_fit_cache
     )
     if corners_estimate is not None:
         estimates.append(corners_estimate)
 
     cards_matches = _load_count_training_matches(db, match, _cards_extractor)
-    cards_estimate = _try_fit_and_estimate("CARDS", cards_matches, match, STANDARD_LINES["CARDS"])
+    cards_estimate = _try_fit_and_estimate(
+        "CARDS", cards_matches, match, STANDARD_LINES["CARDS"], competition_id, model_fit_cache
+    )
     if cards_estimate is not None:
         estimates.append(cards_estimate)
 
@@ -74,13 +87,25 @@ def compute_count_market_estimates(db: Session, match: Match) -> list[CountMarke
 
 
 def _try_fit_and_estimate(
-    category: str, training_matches: list[CountMatchInput], match: Match, line: float
+    category: str,
+    training_matches: list[CountMatchInput],
+    match: Match,
+    line: float,
+    competition_id: int,
+    model_fit_cache: dict | None = None,
 ) -> CountMarketEstimate | None:
     if len(training_matches) < MIN_TRAINING_MATCHES:
         return None
     home_name, away_name = match.home_team.name, match.away_team.name
-    model = PoissonCountModel()
-    model.fit(training_matches, as_of=match.kickoff_utc.date())
+
+    cache_key = ("count", category, competition_id, match.kickoff_utc)
+    if model_fit_cache is not None and cache_key in model_fit_cache:
+        model = model_fit_cache[cache_key]
+    else:
+        model = PoissonCountModel()
+        model.fit(training_matches, as_of=match.kickoff_utc.date())
+        if model_fit_cache is not None:
+            model_fit_cache[cache_key] = model
     if home_name not in model.params.teams or away_name not in model.params.teams:
         return None
 
@@ -124,9 +149,22 @@ def _load_count_training_matches(db: Session, match: Match, extractor) -> list[C
         )
     ).all()
 
+    # One batched query for every prior match's stats, instead of one query per
+    # match in the loop below (a real N+1: this was ~3800 individual round-trips
+    # for a full 10-season history, found via a real timing check during this
+    # session's performance audit — see CHANGELOG.md).
+    prior_match_ids = [m.id for m in prior_matches]
+    stats_by_match_id: dict[int, list[TeamMatchStats]] = {}
+    if prior_match_ids:
+        all_stats = db.scalars(
+            select(TeamMatchStats).where(TeamMatchStats.match_id.in_(prior_match_ids))
+        ).all()
+        for s in all_stats:
+            stats_by_match_id.setdefault(s.match_id, []).append(s)
+
     results: list[CountMatchInput] = []
     for m in prior_matches:
-        stats = db.scalars(select(TeamMatchStats).where(TeamMatchStats.match_id == m.id)).all()
+        stats = stats_by_match_id.get(m.id, [])
         if len(stats) != 2:
             continue
         home_stats = next((s for s in stats if s.is_home), None)
