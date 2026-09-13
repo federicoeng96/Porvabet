@@ -43,6 +43,8 @@ def _seed(db_session, n_matches: int):
             away_corners=3 + i,
             home_yellow_cards=1,
             away_yellow_cards=2,
+            home_fouls=11,
+            away_fouls=13,
             external_ref=f"count-load-synth:{i}",
         )
         matches.append(ingest_historical_match(db_session, record))
@@ -121,9 +123,9 @@ def test_load_count_training_matches_uses_a_bounded_number_of_queries(db_session
 
 def test_compute_count_market_estimates_reuses_the_fit_across_a_shared_kickoff(db_session, monkeypatch):
     """Same performance-audit finding as analysis_runner's model_fit_cache
-    tests, for the count-market (CORNERS/CARDS) fit specifically: two matches
-    sharing the exact same (competition, kickoff) must fit each category's
-    PoissonCountModel only once between them, not twice."""
+    tests, for the count-market (CORNERS/CARDS/FOULS) fit specifically: two
+    matches sharing the exact same (competition, kickoff) must fit each
+    category's PoissonCountModel only once between them, not twice."""
     from app.ingestion.match_ingestion import get_or_create_team
     from app.models.core import Season
     from app.models.enums import MatchStatus
@@ -162,7 +164,7 @@ def test_compute_count_market_estimates_reuses_the_fit_across_a_shared_kickoff(d
     estimates_1 = compute_count_market_estimates(db_session, target_1, model_fit_cache=cache)
     estimates_2 = compute_count_market_estimates(db_session, target_2, model_fit_cache=cache)
 
-    # 2 categories (CORNERS, CARDS) fitted once each — not 4 (once per match).
-    assert fit_calls == 2
-    assert {e.market_category for e in estimates_1} == {"CORNERS", "CARDS"}
-    assert {e.market_category for e in estimates_2} == {"CORNERS", "CARDS"}
+    # 3 categories (CORNERS, CARDS, FOULS) fitted once each — not 6 (once per match).
+    assert fit_calls == 3
+    assert {e.market_category for e in estimates_1} == {"CORNERS", "CARDS", "FOULS"}
+    assert {e.market_category for e in estimates_2} == {"CORNERS", "CARDS", "FOULS"}

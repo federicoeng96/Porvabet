@@ -1,13 +1,13 @@
-"""Corner/card market estimates — probability only, no value/risk score.
+"""Corner/card/fouls market estimates — probability only, no value/risk score.
 
 **Why these never enter the risk ladder**: `build_risk_ladder` (selection.py)
 computes value and risk from a `Candidate`, which requires both a model
 probability AND a real bookmaker price. football-data.co.uk — the only real
 odds source wired into this project (see DATA_SOURCES.md) — does not publish
-corner or card odds at all (verified against the real CSV column list; only
-1X2, Over/Under 2.5 goals and Asian handicap have odds columns). So for these
-two markets there is currently no real price to compute value/edge against,
-anywhere in this codebase's data.
+corner, card or fouls odds at all (verified against the real CSV column list;
+only 1X2, Over/Under 2.5 goals and Asian handicap have odds columns). So for
+these three markets there is currently no real price to compute value/edge
+against, anywhere in this codebase's data.
 
 Rather than either (a) inventing a synthetic price to force these into the
 same pipeline, or (b) silently doing nothing, this module computes and
@@ -15,8 +15,14 @@ persists the model's genuine probability estimate for these markets — exposed
 via the API as `additional_estimates`, explicitly labeled as a statistical
 estimate with no market value — so the modeling work is visible and useful
 (e.g. for a user who has their own quote for these markets, or once a source
-with corner/card odds is added) without pretending an edge exists where no
-market price does.
+with corner/card/fouls odds is added) without pretending an edge exists where
+no market price does.
+
+FOULS specifically: added after backtesting confirmed real, well-calibrated
+skill on this project's own data (unlike CORNERS/CARDS, which show marked
+overconfidence in the high-probability tail) — see BACKTEST_SPEC.md for the
+real numbers that justified enabling it, not just "why not add a third
+market for completeness".
 """
 
 from dataclasses import dataclass
@@ -30,11 +36,14 @@ from app.models.stats import TeamMatchStats
 
 MIN_TRAINING_MATCHES = 40
 
-# Conventional total-count lines used in the corners/cards betting market
-# (publicly known market convention, not a bookmaker's proprietary price) —
-# used only to express the model's probability at a recognizable line, never
-# presented as an actual quoted line from any specific bookmaker.
-STANDARD_LINES = {"CORNERS": 9.5, "CARDS": 3.5}
+# Conventional total-count lines used in the corners/cards/fouls betting
+# markets (publicly known market convention, not a bookmaker's proprietary
+# price) — used only to express the model's probability at a recognizable
+# line, never presented as an actual quoted line from any specific
+# bookmaker. FOULS=24.5 is close to this project's own real observed
+# average total (~24.0 fouls/match across both competitions' full ingested
+# history, see BACKTEST_SPEC.md), not an invented number.
+STANDARD_LINES = {"CORNERS": 9.5, "CARDS": 3.5, "FOULS": 24.5}
 
 NO_ODDS_NOTE = (
     "Stima statistica del modello — nessuna quota di mercato disponibile per "
@@ -83,6 +92,13 @@ def compute_count_market_estimates(
     if cards_estimate is not None:
         estimates.append(cards_estimate)
 
+    fouls_matches = _load_count_training_matches(db, match, _fouls_extractor)
+    fouls_estimate = _try_fit_and_estimate(
+        "FOULS", fouls_matches, match, STANDARD_LINES["FOULS"], competition_id, model_fit_cache
+    )
+    if fouls_estimate is not None:
+        estimates.append(fouls_estimate)
+
     return estimates
 
 
@@ -130,6 +146,10 @@ def _cards_extractor(stats: TeamMatchStats) -> int | None:
     if stats.yellow_cards is None and stats.red_cards is None:
         return None
     return (stats.yellow_cards or 0) + (stats.red_cards or 0)
+
+
+def _fouls_extractor(stats: TeamMatchStats) -> int | None:
+    return stats.fouls_committed
 
 
 def _load_count_training_matches(db: Session, match: Match, extractor) -> list[CountMatchInput]:

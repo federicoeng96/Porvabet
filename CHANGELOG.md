@@ -601,3 +601,25 @@ completi — è un indice.
   United-Man City, Leeds-Newcastle, Lecce-Monza): 3 analizzate con successo,
   nessun crash, comportamento identico a prima delle correzioni (stesso
   fallimento Betfair 403 già noto e documentato).
+- **Mercato falli abilitato in produzione** — ROADMAP.md item 4 segnalava
+  dati già ingeriti (`TeamMatchStats.fouls_committed`, 100% popolato,
+  15.200 righe) ma nessun modello/mercato costruito sopra, priorità bassa.
+  `MarketCategory.FOULS` esisteva già nello schema dal primo slice, mai
+  collegato al Decision Layer — nessuna nuova fonte dati, nessuna decisione
+  di prodotto, solo completare un collegamento già scaffolded. Prima di
+  abilitarlo: backtest reale con lo stesso protocollo walk-forward già
+  usato per corner/cartellini (`PoissonCountModel`, nessun modello nuovo),
+  linea 24.5 (vicina alla media reale osservata, ~24.0 falli/partita).
+  Risultato, a differenza di corner/cartellini: **calibrazione buona nelle
+  fasce alte** (EPL: hit-rate 72.9%, gap 1.5-4.7 punti percentuali nei bin
+  0.7-1.0; Serie A: hit-rate 65.4%, gap 3.3-4.7 punti) — non i 15-25 punti
+  di overconfidence osservati per corner/cartellini. Decisione basata sui
+  numeri, non presa a priori: abilitato in `count_market_estimates.py`
+  (`compute_count_market_estimates`, `_fouls_extractor`,
+  `STANDARD_LINES["FOULS"]`) ed `analysis_runner.py` (`MARKET_LABELS`).
+  Nessuna modifica frontend necessaria (già generico su `market_category`/
+  `market_label`). `BACKTEST_SPEC.md`/`MODEL_SPEC.md`/`ROADMAP.md`
+  aggiornati con i numeri completi. Test esistenti estesi (non solo
+  aggiunti) per includere falli nella verifica end-to-end di
+  `additional_estimates` e nella cache di fit condivisa. 246 test passano,
+  lint pulito.

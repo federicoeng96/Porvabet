@@ -475,6 +475,8 @@ def _seed_matches_with_count_stats(db_session, n_rounds: int) -> list:
                 away_yellow_cards=rng.randint(0, 4),
                 home_red_cards=0,
                 away_red_cards=0,
+                home_fouls=rng.randint(8, 16),
+                away_fouls=rng.randint(8, 16),
                 external_ref=f"api-count-synth:{round_i}:{home}:{away}",
             )
             matches.append(ingest_historical_match(db_session, record))
@@ -482,12 +484,11 @@ def _seed_matches_with_count_stats(db_session, n_rounds: int) -> list:
     return matches
 
 
-def test_match_detail_includes_corners_and_cards_additional_estimates(db_session):
-    """Closes the `_no_odds_estimates_out` gap: with real corners/cards
-    training data available, CORNERS/CARDS predictions are real Prediction
-    rows with `bookmaker_odds=None` that never enter the risk ladder — they
-    must show up in `additional_estimates` instead, each labeled with
-    `NO_ODDS_NOTE`."""
+def test_match_detail_includes_corners_cards_and_fouls_additional_estimates(db_session):
+    """Closes the `_no_odds_estimates_out` gap: with real corners/cards/fouls
+    training data available, these predictions are real Prediction rows with
+    `bookmaker_odds=None` that never enter the risk ladder — they must show
+    up in `additional_estimates` instead, each labeled with `NO_ODDS_NOTE`."""
     from app.engine.decision.analysis_runner import run_analysis_for_match
     from app.engine.decision.count_market_estimates import NO_ODDS_NOTE
     from app.ingestion.match_ingestion import (
@@ -541,7 +542,7 @@ def test_match_detail_includes_corners_and_cards_additional_estimates(db_session
     body = resp.json()
 
     categories = {e["market_category"] for e in body["additional_estimates"]}
-    assert categories == {"CORNERS", "CARDS"}
+    assert categories == {"CORNERS", "CARDS", "FOULS"}
     for estimate in body["additional_estimates"]:
         assert estimate["note"] == NO_ODDS_NOTE
         assert estimate["probability"] > 0

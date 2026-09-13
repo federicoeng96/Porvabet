@@ -309,6 +309,55 @@ condivisa, o l'aggiunta delle feature mancanti prima di ririprovare NB — non
 "binomiale negativa in generale" come se fosse già stata smentita in modo
 definitivo.
 
+## Falli totali — RISULTATI REALI, mercato aggiunto in produzione
+
+Aggiunto durante un audit di qualità di una sessione successiva
+(`app.models.enums.MarketCategory.FOULS` esisteva già nello schema dal primo
+slice, mai collegato al Decision Layer): dati già ingeriti al 100%
+(`TeamMatchStats.fouls_committed`, 15.200 righe su 7.600 partite reali,
+colonne HF/AF di football-data.co.uk), stessa classe `PoissonCountModel`
+già usata per corner/cartellini (nessun modello nuovo da scrivere), stesso
+protocollo walk-forward di `app/backtest/count_market_runner.py`, linea
+24.5 (vicina alla media reale osservata, ~24.0 falli/partita nell'intero
+dataset).
+
+**A differenza di corner/cartellini, qui il backtest mostra una calibrazione
+buona, non un'overconfidence marcata**:
+
+| Segmento | N risolte | Hit rate | Brier | LogLoss |
+|---|---|---|---|---|
+| EPL falli | 3709 | 72.9% | 0.1883 | 0.5633 |
+| Serie A falli | 3705 | 65.4% | 0.2193 | 0.6295 |
+
+Calibrazione nelle fasce alte (predetto vs osservato, gap in punti
+percentuali — confrontare con i gap di 15-25 punti di corner/cartellini
+sopra):
+
+| Segmento | Bin | Predetto | Osservato | Gap |
+|---|---|---|---|---|
+| EPL falli | 0.7–0.8 (n=1018) | 75.1% | 73.6% | +1.5 |
+| EPL falli | 0.8–0.9 (n=950) | 84.6% | 80.8% | +3.8 |
+| EPL falli | 0.9–1.0 (n=438) | 93.3% | 88.6% | +4.7 |
+| Serie A falli | 0.7–0.8 (n=941) | 74.9% | 70.2% | +4.7 |
+| Serie A falli | 0.8–0.9 (n=657) | 82.8% | 79.5% | +3.3 |
+
+(Serie A 0.9–1.0 omesso: solo n=9 osservazioni, troppo poche per un gap
+significativo — dichiarato qui invece di nascosto, non escluso per
+convenienza.)
+
+**Decisione basata sui dati: mercato abilitato in produzione**
+(`count_market_estimates.py`, `additional_estimates`, stessa etichetta
+esplicita "nessuna quota reale, Value/Alert n/d" degli altri due mercati
+count). Gap di 1.5-4.7 punti, non 15-25 — il modello più semplice possibile
+(Poisson puro, nessuna correzione arbitro/tattica) ha già un potere
+predittivo reale e ragionevolmente calibrato su questo mercato specifico,
+diversamente da corner/cartellini. Non ancora spiegato perché i falli si
+comportino meglio (ipotesi non verificata: i falli dipendono più dal ritmo/
+stile di gioco di una squadra, una caratteristica più stabile e catturata
+meglio da una struttura attacco/difesa pura, rispetto a corner — più
+influenzati dal possesso/territorio della singola partita — o cartellini —
+fortemente dipendenti dall'arbitro specifico, dato non ancora ingerito).
+
 ## Calibrazione post-hoc (Platt scaling / isotonica) — confronto reale, decisione basata sui dati
 
 `app/engine/decision/calibration.py` implementa entrambe le tecniche come

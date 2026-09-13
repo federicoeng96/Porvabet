@@ -10,7 +10,7 @@
 | Handicap asiatico | Stessa matrice di score, soglia sulla differenza gol | Stessa distribuzione, cambia solo l'evento aggregato | Non ancora esposto nel Decision Layer (v. ROADMAP) |
 | Corner | Poisson log-lineare attacco/difesa (Maher-style, senza il termine `rho` di Dixon-Coles — non pertinente ai conteggi corner) | I corner non condividono il problema di correlazione a basso punteggio dei gol; una struttura attacco/difesa log-lineare separata, fittata sui dati storici corner reali, è sufficiente come primo modello. | **Implementato** (`app/engine/statistical/count_market_model.py`) — dati storici reali ingeriti da football-data.co.uk (colonne HC/AC), 15.200 righe `TeamMatchStats` popolate su 7.600 partite reali EPL+Serie A. Overdispersione non ancora modellata (Poisson puro, non binomiale negativa) — v. nota sotto. |
 | Cartellini | Stessa struttura Poisson attacco/difesa, **senza correzione arbitro** | I cartellini dipendono fortemente dall'arbitro, ma nessun dato arbitro è ancora ingerito (v. DATA_SOURCES.md su AIA-FIGC/PGMOL) — un modello che lo ignori è deliberatamente incompleto, non mal specificato per omissione: la varianza spiegata dall'arbitro resta fuori dal modello finché quella feature non esiste, ed è documentato così invece di essere nascosto. | **Implementato** (stessa classe `PoissonCountModel`, cartellini = gialli+rossi combinati), dati storici reali ingeriti (colonne HY/AY/HR/AR). |
-| Falli | Dati ingeriti (colonne HF/AF, `TeamMatchStats.fouls_committed`) | — | Dati disponibili, nessun modello/mercato ancora costruito su di essi (i falli non sono tipicamente un mercato scommesse standalone come corner/cartellini) — v. ROADMAP. |
+| Falli | Stessa struttura Poisson attacco/difesa (`PoissonCountModel`), stessa classe di corner/cartellini | I falli sono un conteggio per squadra come corner/cartellini, stessa forma statistica — nessun motivo per un modello diverso. | **Implementato** (audit di performance/qualità, sessione successiva): backtest reale su tutta la storia ingerita (EPL: 3709 predizioni risolte, hit-rate 72.9%, Brier 0.188; Serie A: 3705, hit-rate 65.4%, Brier 0.219) mostra una calibrazione **molto migliore** di corner/cartellini nelle fasce alte (gap di 1-5 punti percentuali contro i 15-25 punti di corner/cartellini) — v. BACKTEST_SPEC.md per i numeri completi. Linea standard 24.5 (vicina alla media reale osservata ~24.0 falli/partita). |
 | Player props (tiri, assist, cartellini) | Modelli specifici per giocatore (es. Poisson per tiri/gol individuali, corretto per minutaggio atteso), NON lo stesso modello di squadra applicato al singolo giocatore | Il volume di un giocatore dipende da minutaggio, ruolo, sistema di gioco — serve un layer che stimi prima il minutaggio atteso (dipendente da formazione, v. `lineup_reconciliation.py`) e poi la produzione condizionata. | Non implementato (richiede dati minutaggio/formazioni affidabili, v. ROADMAP) |
 
 Nessun "unico modello monolitico": ogni famiglia di mercato ha (o avrà) il proprio
@@ -137,12 +137,14 @@ escluse per motivi diversi, non per la stessa causa. Di conseguenza:
   probabilità/incertezza/affidabilità (mai un prezzo sostitutivo inventato,
   v. `risk_score.compute_risk_raw`). `additional_estimates`
   (`NoOddsEstimateOut`) resta quindi riservato a mercati mai parte del
-  meccanismo ladder — oggi solo CORNERS/CARDS, che restano "volutamente
+  meccanismo ladder — oggi CORNERS/CARDS/FOULS, che restano "volutamente
   esclusi dalla risk ladder" come descritto sopra.
-- Le linee usate (9.5 corner, 3.5 cartellini) sono le **linee convenzionali
-  note nel mercato delle scommesse sportive** (dominio pubblico, non il prezzo
-  proprietario di un bookmaker), scelte solo per esprimere la probabilità del
-  modello a un livello riconoscibile — non sono una quota inventata.
+- Le linee usate (9.5 corner, 3.5 cartellini, 24.5 falli) sono le **linee
+  convenzionali note nel mercato delle scommesse sportive** (dominio
+  pubblico, non il prezzo proprietario di un bookmaker — 24.5 è inoltre
+  vicina alla media reale osservata in questo stesso dataset, ~24.0
+  falli/partita), scelte solo per esprimere la probabilità del modello a un
+  livello riconoscibile — non sono una quota inventata.
 
 **Poisson vs binomiale negativa — testato, non solo ipotizzato.** Un primo
 backtest reale aveva mostrato overconfidence marcata nelle probabilità sopra

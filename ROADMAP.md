@@ -283,9 +283,15 @@ Un'ipotesi più mirata da testare in futuro sul lato modello (indipendente
 dalla feature arbitro): dispersione NB **per singola squadra** invece che
 condivisa — non ancora provata, dato che il condiviso non ha aiutato
 abbastanza.
-Il mercato falli (dati già ingeriti, `TeamMatchStats.fouls_committed`) non
-ha ancora un modello/mercato dedicato — i falli non sono tipicamente un
-mercato scommesse standalone come corner/cartellini, priorità bassa.
+✅ **Mercato falli — implementato in una sessione successiva** (audit di
+qualità/performance, non un nuovo modello: stessa `PoissonCountModel` già
+usata per corner/cartellini, `MarketCategory.FOULS` esisteva già
+nello schema dal primo slice, mai collegato). Backtestato prima di
+abilitarlo (stesso standard di CORNERS/CARDS): a differenza di
+corner/cartellini, la calibrazione nelle fasce alte è **buona** (gap di
+1.5-4.7 punti percentuali, non 15-25) — v. `BACKTEST_SPEC.md` sezione
+dedicata per i numeri completi. Linea standard 24.5, vicina alla media
+reale osservata (~24.0 falli/partita).
 
 ### 5. ✅ Feature tattiche misurabili (xG/PPDA via understat) — sbloccato, prima estrazione reale fatta
 Il data model (`TacticalFeature`) e la lista di feature del brief

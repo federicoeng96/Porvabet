@@ -46,6 +46,7 @@ MARKET_LABELS = {
     "TOTAL_GOALS": "Over/Under 2.5 goals",
     "CORNERS": "Over/Under corner totali",
     "CARDS": "Over/Under cartellini totali",
+    "FOULS": "Over/Under falli totali",
 }
 OUTCOME_LABELS = {
     ("MATCH_RESULT", "HOME"): "Home win",
@@ -66,7 +67,7 @@ class InsufficientDataError(RuntimeError):
 class AnalysisResult:
     analysis_version_id: int
     risk_levels: list[dict]
-    count_market_estimates_computed: int  # CORNERS/CARDS: probability-only, no odds — see count_market_estimates.py
+    count_market_estimates_computed: int  # CORNERS/CARDS/FOULS: probability-only, no odds — see count_market_estimates.py
 
 
 def run_analysis_for_match(
@@ -243,7 +244,7 @@ def _refresh_live_odds_for_match(db: Session, match: Match, odds_provider: OddsP
 def _get_or_create_count_model_version(
     db: Session, match: Match, estimate: CountMarketEstimate
 ) -> ModelVersion:
-    """Separate ModelVersion per count market (CORNERS/CARDS have independently
+    """Separate ModelVersion per count market (CORNERS/CARDS/FOULS have independently
     fitted attack/defense ratings) — never reuses the Dixon-Coles ModelVersion,
     which would misrepresent which model actually produced the prediction."""
     from app.models.core import Season
@@ -309,7 +310,7 @@ def _persist_count_market_estimate(
     analysis_version: AnalysisVersion,
     estimate: CountMarketEstimate,
 ) -> None:
-    """Persists a CORNERS/CARDS probability estimate as a Prediction with
+    """Persists a CORNERS/CARDS/FOULS probability estimate as a Prediction with
     `bookmaker_odds=None` / `value=None` — deliberately never given a
     `Candidate`/RiskSelection, since those require a real price (see
     count_market_estimates.py docstring)."""
@@ -478,7 +479,7 @@ def _build_candidates_and_predictions(
         # ("n/d") — the model's own probability/fair-odds estimate is never
         # withheld, and the outcome still enters the risk ladder below, just
         # never with a guessed price. Same "n/d" principle already applied to
-        # CORNERS/CARDS in count_market_estimates.py, now applied uniformly here
+        # CORNERS/CARDS/FOULS in count_market_estimates.py, now applied uniformly here
         # too instead of only when *some* (not all) markets lack a quote.
         candidate = Candidate(
             market_outcome_key=f"{category}:{code}",
