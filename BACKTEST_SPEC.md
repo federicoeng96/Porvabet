@@ -565,8 +565,11 @@ deep_completions_adjustment_factor` resta testato, non collegato.
 - ✅ I risultati sono ora persistiti in righe `Backtest` reali
   (`scripts/persist_backtest_results.py`, v. ROADMAP.md punto 1) — non più
   solo riportati a mano.
-- Metriche per player props, corner, cartellini: bloccate dall'assenza dei
-  modelli corrispondenti (v. MODEL_SPEC.md).
+- Metriche per player props: bloccate dall'assenza di un modello dedicato
+  (v. MODEL_SPEC.md). Corner/cartellini **hanno invece già risultati reali**
+  (v. sezione dedicata sopra, `PoissonCountModel`) — l'unico limite per loro
+  è l'assenza di una quota di mercato per calcolare ROI/value (v.
+  DATA_SOURCES.md), non l'assenza di un modello o di un backtest.
 - Distribuzione di probabilità e stabilità nel tempo (richiesta dal brief) —
   `calibration_curve` copre la prima; una vera analisi di stabilità
   richiederebbe di confrontare backtest su finestre temporali diverse, non
