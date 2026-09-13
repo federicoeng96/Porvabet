@@ -647,3 +647,58 @@ interfacce, senza refactoring del pre-match.
   Corner/cartellini restano "n/d" fino alla conferma reale del codice e
   della convenzione di naming dei runner — v. `DATA_SOURCES.md` per il
   dettaglio completo.
+
+### 11. Audit qualità generale (test/errori/performance) — richiesto esplicitamente, completato
+Passata critica sull'intero codebase su tre assi, con lo stesso standard di
+rigore (misurato, non stimato, ogni volta che possibile):
+
+- **Copertura test**: report reale (`pytest-cov`, ora dipendenza dev
+  dichiarata), 86% → 96%. Colmati i gap reali (non gli stub deliberati già
+  accettati in sessioni precedenti): `lineup_reconciliation.py` (logica di
+  decisione reale, 0% → 100%), `rate_limiter.py`, `db/session.py`,
+  `api/routers/matches.py` (69% → 98%, incluso `GET /matches` mai testato
+  prima), e i 4 provider reali ma mai testati (`open_meteo`, `rss_news`,
+  `api_football`, `fbref`). Scrivere i test per `fbref` ha scoperto un bug
+  reale (non ipotetico): il provider era completamente non funzionante in
+  questo stesso ambiente installato (`lxml` mancante come dipendenza,
+  `pandas.read_html` su una stringa letterale). Vedi `CHANGELOG.md` per il
+  dettaglio completo, incluso l'elenco onesto dei gap residui non chiusi.
+- **Gestione errori**: trovati e corretti 4 punti dove un singolo elemento
+  malformato interrompeva bruscamente un intero batch di ingestione reale
+  (10 stagioni × 2 competizioni) invece di degradare in modo controllato —
+  `ingest_football_data.py`/`ingest_upcoming_fixtures.py` (isolamento per
+  record via SAVEPOINT), `ingest_understat_tactical_features.py`
+  (isolamento per stagione), `football_data_co_uk/provider.py::parse_csv`
+  (isolamento per riga CSV). Verificato anche cosa non necessitava
+  correzione (fallback provider già isolato, un `RuntimeError` difensivo
+  reso irraggiungibile da un guard a monte, FastAPI già degrada in un 500
+  pulito).
+- **Performance su molte partite reali insieme** (la domanda esplicita
+  dell'utente): trovato e corretto un N+1 severo in `GET /matches` — l'intera
+  tabella principale scansionava OGNI partita mai ingerita (10 stagioni di
+  storico) invece che solo quelle con analisi corrente, misurato **7733
+  query SQL per 18 righe reali**, corretto a 124 (62 volte meno) con un
+  JOIN diretto. Un secondo N+1 reale in `count_market_estimates.py`
+  (corner/cartellini) dimezzato (7.68s → 3.67s/partita). Aggiunta una
+  cache di fit opzionale (`model_fit_cache`, mai attiva di default) che
+  permette a `analyze-batch` di riusare lo stesso modello già fittato tra
+  partite della stessa competizione con lo stesso identico orario di calcio
+  d'inizio, invece di rifittare da zero per ognuna (~10s/partita altrimenti).
+  Tutto misurato contro i dati reali già nel database di sviluppo, non solo
+  stimato — v. `CHANGELOG.md` per i numeri completi e cosa NON è stato
+  corretto (un N+1 minore in `GET /matches/{id}`, a priorità più bassa
+  perché non peggiora con la crescita dello storico).
+
+246 test passano, lint pulito, 3 commit separati e pushati.
+
+### Setup locale e verifica Betfair dal vivo — priorità esplicita dell'utente
+`setup.ps1`/`start.ps1` (Windows) e `setup.sh`/`start.sh` (macOS/Linux)
+automatizzano prerequisiti, database, migrazioni, `.env`, dipendenze e primo
+avvio (ingestione fixture reali + apertura browser inclusi).
+`RUNNING_LOCALLY.md` riscritto per un utente al primo terminale, con una
+sezione "Problemi comuni" per gli errori più probabili. Resta da fare
+dall'utente: il primo avvio reale sul proprio computer, la verifica che
+Betfair restituisca quote vere (non più bloccato dalla rete della sandbox),
+ed eventualmente l'esecuzione di `scripts/discover_betfair_market_types.py`
+per scoprire se/come corner e cartellini sono davvero disponibili come
+market type — v. `RUNNING_LOCALLY.md` per i passi esatti.
