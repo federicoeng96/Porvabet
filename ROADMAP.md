@@ -54,9 +54,15 @@ cosa esiste nel codice. Tre categorie, nessuna ambiguità tra "esiste" e
   costruito e testato, nessuna fonte reale di segnali collegata.
 
 **⛔ Bloccato, con motivo verificato (non solo "non ancora fatto")**:
-- Copertura Betfair per corner/cartellini: non verificabile da questa
-  sandbox — bloccato l'intero dominio betfair.com, documentazione inclusa
-  (v. `DATA_SOURCES.md`).
+- Copertura Betfair per corner/cartellini: **ri-audit — i mercati Exchange
+  esistono davvero** (confermato con fonti reali indipendenti, non più solo
+  un indizio circostanziale — v. `DATA_SOURCES.md`), ma il codice esatto del
+  market type resta bloccato dalla stessa documentazione ufficiale
+  irraggiungibile da qui. Costruito invece un meccanismo di discovery reale
+  (`discover_market_types_for_match` + `scripts/discover_betfair_market_types.py`)
+  che chiede a Betfair stesso quali mercati esistono per ogni fixture, senza
+  indovinare nulla — resta da eseguire dal computer dell'utente per ottenere
+  il codice reale e collegarlo.
 - Player props: nessuna fonte gratuita trovata con formazioni a livello di
   singolo giocatore in forma strutturata e a rischio accettabile (Gazzetta/
   BBC categoria C con divieto esplicito; Sky Italia bloccata tecnicamente;
@@ -620,19 +626,24 @@ interfacce, senza refactoring del pre-match.
   l'utente registra una chiave gratuita su football-data.org e la imposta
   in `.env`, poi `python scripts/ingest_upcoming_fixtures.py` popola
   davvero la prossima giornata.
-- ✅ **Copertura Betfair corner/cartellini: indagata a fondo, esito onesto
-  "non verificabile da qui", non "non ancora fatto".** Richiesta esplicita:
-  verificare se Betfair Exchange offra davvero mercati corner/cartellini
-  per il calcio. Due percorsi tentati: (1) `docs.developer.betfair.com` e
-  `developer.betfair.com` restituiscono lo stesso blocco Cloudflare
-  "Restricted" già trovato per il login — **il blocco copre l'intero
-  dominio betfair.com**, non solo login/Betting API (scoperta più ampia di
-  quanto documentato finora); (2) `betfairlightweight` non ha un catalogo
-  di market type code, ma il suo modello dati del vero In-Play Service
-  (`numberOfCorners`/`numberOfYellowCards`/`numberOfRedCards`, ecc.) mostra
-  che Betfair traccia queste statistiche live — indizio reale ma
-  circostanziale, non una conferma di un market type per l'exchange. Per
-  istruzione esplicita dell'utente: senza verifica possibile, corner/
-  cartellini restano sempre "n/d" — già il comportamento corrente, nessuna
-  modifica di codice richiesta. V. `DATA_SOURCES.md` per il dettaglio
-  completo.
+- ✅ **Copertura Betfair corner/cartellini: ri-audit, esito aggiornato — i
+  mercati esistono davvero, il codice esatto resta da confermare dal vivo.**
+  Richiesta esplicita (due volte, sessioni diverse): verificare se Betfair
+  Exchange offra davvero mercati corner/cartellini per il calcio. Primo giro
+  (invariato): `docs.developer.betfair.com`/`developer.betfair.com`
+  bloccati (stesso Cloudflare "Restricted" del login, l'intero dominio
+  betfair.com, non solo login/Betting API); `betfairlightweight` senza
+  catalogo di market type code, solo l'indizio circostanziale del modello
+  dati In-Play Service. **Secondo giro**: confermato con fonti web reali e
+  indipendenti (materiale educativo Betfair sull'Exchange stesso, siti di
+  trading/recensioni indipendenti) che corner e cartellini/bookings **sono
+  mercati Exchange reali e liquidi** per le partite principali — non più solo
+  un indizio, ma nemmeno il codice letterale del market type, ancora
+  bloccato dalla stessa documentazione ufficiale irraggiungibile. Costruito
+  invece `BetfairExchangeOddsProvider.discover_market_types_for_match`
+  (chiama `listMarketTypes`, un'operazione reale e documentata dell'API-NG,
+  per scoprire cosa Betfair offre davvero per ogni fixture, mai indovinare
+  un codice) + `scripts/discover_betfair_market_types.py` per l'utente.
+  Corner/cartellini restano "n/d" fino alla conferma reale del codice e
+  della convenzione di naming dei runner — v. `DATA_SOURCES.md` per il
+  dettaglio completo.

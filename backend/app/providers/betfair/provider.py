@@ -103,22 +103,40 @@ Betfair Exchange market-type codes for football, with the standard runner
 naming Betfair uses for each (`"The Draw"`/team names for `MATCH_ODDS`;
 `"Over 2.5 Goals"`/`"Under 2.5 Goals"` for `OVER_UNDER_25`). Whether a given
 Premier League/Serie A fixture actually has a *tradable, liquid* market this
-far out — and specifically whether corners/cards have any Exchange market at
-all — was NOT verifiable live this session (network-blocked, see above);
+far out was NOT verifiable live this session (network-blocked, see above);
 community/secondary-source knowledge says 1X2 markets are commonly created
 days ahead with thin early liquidity, but this is not an official Betfair
-guarantee. **Corners/cards are deliberately NOT implemented here**: no
-verified, real Betfair market-type code for these was confirmed in this
-session (unlike `MATCH_ODDS`/`OVER_UNDER_25`, which are extensively
-documented), and guessing one would be exactly the "invented data source"
-failure this project avoids — this needs live verification (RUNNING_LOCALLY.md)
-before being added. If a market for a given fixture does not exist or has no
-back price, this provider returns nothing for that outcome, never a
-fabricated price.
+guarantee.
+
+**Corners/cards: re-audited — real Exchange markets exist, but the exact
+market type code/runner-naming convention still isn't confirmed from here.**
+Multiple independent real-world sources (Betfair's own Exchange education
+material, third-party trading/review sites — see DATA_SOURCES.md) confirm
+football corners and cards/bookings are genuine, tradable **Exchange**
+markets (not just Betfair Sportsbook, a different product) — stronger
+evidence than the earlier "circumstantial In-Play Service field names"
+finding. But every official Betfair documentation page that would give the
+*exact* market type code string (`docs.developer.betfair.com`,
+`developer.betfair.com`, `support.betfair.com`) returns the same Cloudflare
+block from this sandbox, confirmed again via an AI-assisted web fetch tool
+(not just direct requests) — so a literal code (e.g. "CORNERS_1X2") is still
+not hardcoded here; guessing one would be exactly the "invented data source"
+failure this project avoids. Instead, `discover_market_types_for_match`
+below calls Betfair's own `listMarketTypes` for a specific fixture — a real,
+fully-documented API-NG operation — so the exact codes Betfair actually uses
+can be read off directly once run against live data
+(`scripts/discover_betfair_market_types.py`, from a non-blocked network —
+see RUNNING_LOCALLY.md), rather than guessed. Wiring a discovered corners/
+cards market into `get_odds_for_match` still needs that live confirmation of
+the runner-naming convention before it can be parsed with the same
+confidence as `MATCH_ODDS`/`OVER_UNDER_25`. If a market for a given fixture
+does not exist or has no back price, this provider returns nothing for that
+outcome, never a fabricated price.
 """
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from betfairlightweight import APIClient, filters
@@ -175,6 +193,19 @@ def _over_under_25_outcome_code_for(runner_name: str, *_ignored: str) -> str | N
     if "under" in name_lower:
         return "UNDER"
     return None
+
+
+# Case-insensitive substring markers used only to flag a *candidate* corners/
+# cards market type in `discover_market_types_for_match` below — never used to
+# decide a market type code outright. See that method's docstring for why.
+CORNERS_CARDS_HEURISTIC_KEYWORDS = ("CORNER", "BOOKING", "CARD")
+
+
+@dataclass(frozen=True)
+class DiscoveredMarketType:
+    market_type_code: str
+    market_count: int
+    looks_like_corners_or_cards: bool
 
 
 class BetfairExchangeOddsProvider(OddsProvider):
@@ -281,6 +312,87 @@ class BetfairExchangeOddsProvider(OddsProvider):
             outcome_mapper=_over_under_25_outcome_code_for,
         )
         return records
+
+    def discover_market_types_for_match(
+        self, home_team_name: str, away_team_name: str, kickoff_utc_iso: str
+    ) -> list[DiscoveredMarketType]:
+        """Lists every real Betfair Exchange market type that exists for this
+        specific fixture — `listMarketTypes` filtered by the fixture's own
+        `event_id`, a real, fully-documented API-NG operation (unlike guessing
+        a corners/cards market_type_code up front).
+
+        **Why this exists instead of a hardcoded CORNERS/CARDS market type
+        code.** Independent, real-world sources (Betfair's own Exchange
+        education material, third-party trading/review sites — see
+        DATA_SOURCES.md) confirm football corners and cards/bookings ARE real,
+        tradable Exchange markets, not just Sportsbook fixed-odds markets —
+        stronger evidence than this project had before. But every official
+        Betfair documentation page that would give the *exact* market type
+        code string and runner-naming convention (`docs.developer.betfair.com`,
+        `developer.betfair.com`, `support.betfair.com`) returns the same
+        Cloudflare block from this sandbox — confirmed again via WebFetch, not
+        just direct requests — so guessing a literal code (e.g. "CORNERS_1X2")
+        would be exactly the invented-endpoint failure this project avoids.
+        `listMarketTypes` sidesteps that: it asks Betfair itself what really
+        exists for this fixture, so no guess is needed.
+
+        Returns every market type Betfair reports for the fixture, each
+        flagged `looks_like_corners_or_cards` via a case-insensitive substring
+        match against `CORNERS_CARDS_HEURISTIC_KEYWORDS` — a hint for a human
+        (or `scripts/discover_betfair_market_types.py`) to look at, never used
+        to auto-select a market for `get_odds_for_match`. Wiring a real
+        corners/cards market into that method needs one more real API
+        response (this method's own output, run from a non-blocked network —
+        see RUNNING_LOCALLY.md) to confirm the runner-naming convention, the
+        same rigor already applied to MATCH_ODDS/OVER_UNDER_25.
+        """
+        client = self._ensure_client()
+        soccer_id = self._get_soccer_event_type_id(client)
+        kickoff = _parse_iso(kickoff_utc_iso)
+        window_from = kickoff - timedelta(hours=12)
+        window_to = kickoff + timedelta(hours=12)
+
+        self._rate_limiter.acquire()
+        catalogues = client.betting.list_market_catalogue(
+            filter=filters.market_filter(
+                event_type_ids=[soccer_id],
+                market_type_codes=[MATCH_ODDS_MARKET_TYPE_CODE],
+                text_query=f"{home_team_name} v {away_team_name}",
+                market_start_time={
+                    "from": window_from.isoformat(),
+                    "to": window_to.isoformat(),
+                },
+            ),
+            market_projection=["EVENT"],
+            max_results=10,
+        )
+        home_lower = home_team_name.strip().lower()
+        away_lower = away_team_name.strip().lower()
+        market = next(
+            (
+                m
+                for m in catalogues
+                if home_lower in m.event.name.lower() and away_lower in m.event.name.lower()
+            ),
+            None,
+        )
+        if market is None:
+            return []  # fixture not found on Betfair at all (e.g. no MATCH_ODDS market yet)
+
+        self._rate_limiter.acquire()
+        market_types = client.betting.list_market_types(
+            filter=filters.market_filter(event_ids=[market.event.id])
+        )
+        return [
+            DiscoveredMarketType(
+                market_type_code=mt.market_type,
+                market_count=mt.market_count,
+                looks_like_corners_or_cards=any(
+                    kw in mt.market_type.upper() for kw in CORNERS_CARDS_HEURISTIC_KEYWORDS
+                ),
+            )
+            for mt in market_types
+        ]
 
     def _fetch_market_odds(
         self,

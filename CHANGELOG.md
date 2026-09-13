@@ -409,3 +409,24 @@ completi — è un indice.
   `compute_risk_raw`, ladder tutta n/d, ladder mista) + 3 test esistenti
   riscritti per il nuovo comportamento invece del vecchio. 185 test passano,
   lint pulito, build/typecheck frontend puliti.
+- **Ri-audit Betfair corner/cartellini, su richiesta esplicita**: confermato
+  con fonti web reali e indipendenti (materiale educativo Betfair
+  sull'Exchange, siti di trading/recensioni indipendenti) che questi mercati
+  esistono davvero sull'Exchange (non solo Sportsbook, un prodotto diverso)
+  — più forte del precedente indizio circostanziale (campi
+  `numberOfCorners` dell'In-Play Service). Il codice esatto del market type
+  resta però bloccato: ogni sotto-dominio della documentazione ufficiale
+  Betfair restituisce lo stesso 403 Cloudflare, confermato di nuovo anche
+  tramite uno strumento di fetch web assistito da AI (non solo richieste
+  dirette dalla sandbox). Invece di indovinare un codice, aggiunto
+  `BetfairExchangeOddsProvider.discover_market_types_for_match`: chiama
+  `listMarketTypes` (operazione reale e documentata dell'API-NG) per la
+  fixture specifica e restituisce l'elenco vero dei market type che Betfair
+  offre, segnalando quelli che sembrano corner/cartellini con un'euristica
+  su sottostringa (mai usata per scegliere un mercato automaticamente).
+  Aggiunto `scripts/discover_betfair_market_types.py` per farlo girare su
+  ogni fixture reale già in DB dal computer dell'utente. 2 nuovi test
+  dedicati con risposte mock realistiche (stesso standard di
+  MATCH_ODDS/OVER_UNDER_25). `DATA_SOURCES.md`/`ROADMAP.md`/docstring del
+  provider aggiornati con l'evidenza rafforzata. 187 test passano, lint
+  pulito.

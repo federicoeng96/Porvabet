@@ -14,6 +14,7 @@ from betfairlightweight.resources.bettingresources import (
     EventTypeResult,
     MarketBook,
     MarketCatalogue,
+    MarketTypeResult,
 )
 
 from app.models.enums import DataSourceCategory
@@ -41,14 +42,17 @@ class _FakeBetting:
         books,
         catalogues_by_type=None,
         books_by_market_id=None,
+        market_types=None,
     ):
         self._event_types = event_types
         self._catalogues = catalogues
         self._books = books
         self._catalogues_by_type = catalogues_by_type
         self._books_by_market_id = books_by_market_id
+        self._market_types = market_types or []
         self.list_market_catalogue_calls = []
         self.list_market_book_calls = []
+        self.list_market_types_calls = []
 
     def list_event_types(self, **kwargs):
         return self._event_types
@@ -66,6 +70,10 @@ class _FakeBetting:
             market_id = kwargs["market_ids"][0]
             return self._books_by_market_id.get(market_id, [])
         return self._books
+
+    def list_market_types(self, **kwargs):
+        self.list_market_types_calls.append(kwargs)
+        return self._market_types
 
 
 class _FakeClient:
@@ -422,6 +430,50 @@ def test_ensure_client_renews_expired_session_via_keep_alive():
 
     assert fake_client.keep_alive_calls == 1
     assert fake_client.login_interactive_calls == 1  # renewed cheaply, no full re-login
+
+
+def test_discover_market_types_flags_corners_and_cards_candidates():
+    fake_client = _FakeClient(_soccer_event_types(), _match_odds_catalogue(), [])
+    fake_client.betting._market_types = [
+        MarketTypeResult(marketType="MATCH_ODDS", marketCount=1),
+        MarketTypeResult(marketType="OVER_UNDER_25", marketCount=1),
+        MarketTypeResult(marketType="CORNERS_OVER_UNDER", marketCount=1),
+        MarketTypeResult(marketType="TOTAL_BOOKING_POINTS", marketCount=1),
+    ]
+    provider = BetfairExchangeOddsProvider(
+        app_key="k", username="u", password="p", client=fake_client
+    )
+
+    discovered = provider.discover_market_types_for_match("Roma", "Inter", KICKOFF_ISO)
+
+    by_code = {d.market_type_code: d for d in discovered}
+    assert set(by_code) == {
+        "MATCH_ODDS",
+        "OVER_UNDER_25",
+        "CORNERS_OVER_UNDER",
+        "TOTAL_BOOKING_POINTS",
+    }
+    assert by_code["MATCH_ODDS"].looks_like_corners_or_cards is False
+    assert by_code["OVER_UNDER_25"].looks_like_corners_or_cards is False
+    assert by_code["CORNERS_OVER_UNDER"].looks_like_corners_or_cards is True
+    assert by_code["TOTAL_BOOKING_POINTS"].looks_like_corners_or_cards is True
+    # Scoped to the fixture's own real event id, never every football event on Betfair.
+    filter_used = fake_client.betting.list_market_types_calls[0]["filter"]
+    assert filter_used["eventIds"] == ["30000"]
+
+
+def test_discover_market_types_returns_empty_when_fixture_not_found():
+    fake_client = _FakeClient(
+        _soccer_event_types(), _match_odds_catalogue(event_name="Napoli v Juventus"), []
+    )
+    provider = BetfairExchangeOddsProvider(
+        app_key="k", username="u", password="p", client=fake_client
+    )
+
+    discovered = provider.discover_market_types_for_match("Roma", "Inter", KICKOFF_ISO)
+
+    assert discovered == []
+    assert fake_client.betting.list_market_types_calls == []  # never reached — no event found
 
 
 def test_ensure_client_falls_back_to_full_relogin_if_keep_alive_fails():
