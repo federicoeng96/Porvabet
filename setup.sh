@@ -31,9 +31,15 @@ PYTHON_CMD=""
 for candidate in python3.12 python3.11 python3; do
     if command -v "$candidate" >/dev/null 2>&1; then
         ver="$("$candidate" --version 2>&1)"
-        major="$(echo "$ver" | grep -oE '[0-9]+' | sed -n 1p)"
-        minor="$(echo "$ver" | grep -oE '[0-9]+' | sed -n 2p)"
-        if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 11 ]; }; then
+        # `|| true` sulla pipeline: se "--version" non stampasse un numero
+        # riconoscibile (caso limite, mai osservato con un python3 reale),
+        # `grep -oE` senza corrispondenze uscirebbe con stato 1 e, con
+        # "pipefail" attivo, farebbe terminare l'intero script qui - stesso
+        # tipo di bug gia' trovato e corretto sopra per psql, individuato
+        # rileggendo questo file con lo stesso occhio critico.
+        major="$(echo "$ver" | grep -oE '[0-9]+' | sed -n 1p || true)"
+        minor="$(echo "$ver" | grep -oE '[0-9]+' | sed -n 2p || true)"
+        if [ "${major:-0}" -gt 3 ] 2>/dev/null || { [ "${major:-0}" -eq 3 ] 2>/dev/null && [ "${minor:-0}" -ge 11 ] 2>/dev/null; }; then
             PYTHON_CMD="$candidate"
             ok "Python trovato: $ver ($candidate)"
             break

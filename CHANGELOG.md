@@ -706,3 +706,21 @@ completi — è un indice.
   - `RUNNING_LOCALLY.md`: aggiunta una nota esplicita che rilanciare
     `setup.ps1` piu' volte e' sicuro e normale, e un promemoria (`git pull`)
     per chi ha gia' clonato il progetto prima di questa correzione.
+- Audit generale di qualita' sugli script di setup (RUNNING_LOCALLY.md,
+  setup.ps1/sh, start.ps1/sh), richiesto esplicitamente per anticipare altri
+  problemi prima che l'utente ci arrivi. Trovata una **seconda istanza,
+  preesistente** (non introdotta in questa sessione) della stessa classe di
+  bug gia' corretta sopra per psql: in `setup.sh`, il rilevamento della
+  versione Python (`grep -oE '[0-9]+'` sull'output di `--version`) e' dentro
+  un'assegnazione semplice `major="$(...)"` — con `set -e`/`pipefail`
+  attivi, un output senza cifre riconoscibili (mai osservato con un vero
+  python3, ma un limite reale del codice) avrebbe fatto uscire grep con
+  stato 1 e terminato l'intero script in silenzio invece di mostrare
+  l'errore "Python 3.11+ non trovato" gia' previsto poco sotto. Riprodotto
+  il meccanismo con un test minimo dedicato prima di correggere (non solo
+  letto). Corretto con `|| true` sulle due pipeline e default
+  `${major:-0}`/`${minor:-0}` nel confronto successivo; ri-testato lo stesso
+  scenario per confermare che ora lo script prosegue invece di abortire.
+  Resto dell'audit: nessun altro problema di encoding/idempotenza trovato in
+  `setup.ps1`/`start.ps1`/`setup.sh` (riletti per intero), verifica di
+  `start.sh` in corso.
