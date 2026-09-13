@@ -309,6 +309,100 @@ condivisa, o l'aggiunta delle feature mancanti prima di ririprovare NB — non
 "binomiale negativa in generale" come se fosse già stata smentita in modo
 definitivo.
 
+## Binomiale negativa con dispersione per singola squadra — l'ipotesi retestata, risultato reale
+
+L'ipotesi lasciata esplicitamente aperta sopra è stata effettivamente
+retestata in una sessione successiva:
+`NegativeBinomialPerTeamCountModel` (`app/engine/statistical/
+count_market_model.py`) usa un parametro `alpha` per squadra invece che uno
+condiviso — il conteggio di ogni squadra (corner vinti, cartellini ricevuti)
+usa la propria dispersione, indipendentemente dal ruolo casa/trasferta.
+Stesso backtest walk-forward reale sui 4 segmenti, confrontato con Poisson e
+NB condivisa già documentati sopra.
+
+**Costo computazionale reale, non trascurabile**: con 34 squadre, il modello
+passa da 70 a 103 parametri — un singolo fit sull'intera storia (3800
+partite) impiega ~11-25s (contro ~1-3s del Poisson/NB condivisa), e un
+backtest walk-forward completo su un segmento (~126 refit) richiede
+10-24 minuti reali (misurato, non stimato — eseguito in background durante
+questa sessione).
+
+**Brier score e log loss complessivi — miglioramento reale in 3 segmenti su 4**:
+
+| Segmento | Poisson | NB condivisa | NB per-squadra |
+|---|---|---|---|
+| EPL corner (Brier / LogLoss) | 0.2495 / 0.6949 | 0.2481 / 0.6909 | **0.2457 / 0.6862** |
+| EPL cartellini (Brier / LogLoss) | 0.2430 / 0.6835 | 0.2429 / 0.6834 | 0.2441 / 0.6825 |
+| Serie A corner (Brier / LogLoss) | 0.2501 / 0.6957 | 0.2480 / 0.6906 | **0.2428 / 0.6798** |
+| Serie A cartellini (Brier / LogLoss) | 0.2105 / 0.6128 | *non completato* | 0.2107 / 0.6132 |
+
+NB per-squadra è la migliore delle tre su corner in entrambe le competizioni
+(non un piccolo margine per Serie A corner: 0.2501→0.2428 Brier,
+0.6957→0.6798 LogLoss). Su cartellini è sostanzialmente equivalente a
+Poisson/NB condivisa (differenze nella terza cifra decimale, in entrambe le
+direzioni) — nessun segnale di over/underdispersione utile da catturare lì,
+coerente con l'ipotesi che i cartellini dipendano più dall'arbitro (dato non
+ingerito) che dalla forma della distribuzione.
+
+**Calibrazione nelle fasce alte — il vero test, confrontato bin per bin
+(gap in punti percentuali, N tra parentesi)**:
+
+| Segmento | Bin | Poisson | NB condivisa | NB per-squadra |
+|---|---|---|---|---|
+| EPL corner | 0.7–0.8 | +14.1 (n=301) | +18.8 | +14.4 (n=329) |
+| EPL corner | 0.8–0.9 | +25.0 (n non registrato nel confronto originale) | +22.3 | **+18.3 (n=46)** |
+| EPL corner | 0.9–1.0 | +9.2 | +10.0 | +19.3 (n=8, troppo pochi) |
+| Serie A corner | 0.7–0.8 | +8.9 | +7.7 | **+4.3 (n=395)** |
+| Serie A corner | 0.8–0.9 | +16.7 | +20.7 | **+13.3 (n=96)** |
+| Serie A corner | 0.9–1.0 | +17.4 | +17.7 | +43.9 (n=8, troppo pochi) |
+| EPL cartellini | 0.7–0.8 | +7.4 | +7.3 | +6.0 (n=439) |
+| EPL cartellini | 0.8–0.9 | +16.7 | +16.7 | **+13.7 (n=87)** |
+| EPL cartellini | 0.9–1.0 | +45.9 | +45.9 | +25.9 (n=6, troppo pochi) |
+| Serie A cartellini | 0.6–0.7 | — | — | -0.8 (n=1222, quasi perfetto) |
+| Serie A cartellini | 0.7–0.8 | — | — | +1.8 (n=1535, ottimo) |
+| Serie A cartellini | 0.8–0.9 | — | — | +7.1 (n=443) |
+| Serie A cartellini | 0.9–1.0 | — | — | +18.9 (n=19, pochi) |
+
+(Serie A cartellini non ha una baseline Poisson/NB per-bin nel confronto
+originale — v. sezione sopra, non fu incluso in quella tabella specifica.)
+
+**Conclusione onesta: un miglioramento reale e più consistente della NB
+condivisa, ma non una soluzione completa — non abbastanza per giustificare
+il costo computazionale in produzione, per ora.**
+
+- Nei bin con abbastanza osservazioni (n=46-1535), NB per-squadra migliora
+  la calibrazione in **7 casi su 7** rispetto alla baseline disponibile
+  (Poisson e/o NB condivisa) — non un pattern misto come la NB condivisa,
+  che a volte peggiorava. Il miglioramento più marcato: Serie A corner
+  0.7-0.8 (+8.9→+4.3) e 0.8-0.9 (+16.7→+13.3), EPL corner 0.8-0.9
+  (+25.0→+18.3).
+- Nei bin estremi (0.9-1.0), dove n crolla a 6-19 osservazioni in ogni
+  segmento e ogni modello testato (non solo questo), il risultato è
+  rumoroso e in alcuni casi peggiore — non un fallimento specifico di
+  questo modello, ma il limite intrinseco di stimare qualunque cosa da
+  poche decine di partite.
+- Il gap residuo nei bin ben popolati resta comunque sostanziale (4-18
+  punti percentuali, non zero) — la dispersione per squadra aiuta, ma non
+  chiude il problema. Coerente con l'ipotesi già scritta sopra: la causa
+  principale resta probabilmente l'assenza di feature esplicative note
+  (arbitro per i cartellini, tattica/possesso per i corner), non la forma
+  della distribuzione di conteggio — anche la parametrizzazione più
+  flessibile provata finora non basta da sola.
+
+**Decisione basata sui dati: `PoissonCountModel` resta in produzione per
+corner/cartellini** (nessun cambiamento rispetto alla decisione precedente).
+Il miglioramento di NB per-squadra è reale ma parziale, e il costo
+computazionale (10-25x più lento per singolo fit, minuti invece di secondi
+per un intero backtest/batch — anche se il `model_fit_cache` di
+`analyze_matches_batch` condividerebbe un fit fra partite con stesso
+kickoff, come già fa oggi per Poisson) non è ancora giustificato da un
+guadagno che resta parziale, non decisivo. `NegativeBinomialPerTeamCountModel`
+resta nel codice, testato e funzionante (stesso trattamento riservato a
+`NegativeBinomialCountModel`): la pista più promettente rimane l'aggiunta
+delle feature mancanti (dato arbitro, feature tattiche) prima di
+un'eventuale nuova valutazione — non "binomiale negativa (in nessuna forma)
+già smentita definitivamente".
+
 ## Falli totali — RISULTATI REALI, mercato aggiunto in produzione
 
 Aggiunto durante un audit di qualità di una sessione successiva

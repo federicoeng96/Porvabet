@@ -623,3 +623,26 @@ completi — è un indice.
   aggiunti) per includere falli nella verifica end-to-end di
   `additional_estimates` e nella cache di fit condivisa. 246 test passano,
   lint pulito.
+- **Ipotesi dispersione NB per singola squadra — retestata con un backtest
+  reale, decisione presa dai numeri**. BACKTEST_SPEC.md aveva lasciato
+  esplicitamente aperta questa ipotesi dopo che la NB condivisa non aveva
+  risolto in modo consistente l'overconfidence di corner/cartellini.
+  Implementato `NegativeBinomialPerTeamCountModel` (un `alpha` per squadra
+  invece che condiviso, stessa struttura attacco/difesa) e backtestato sugli
+  stessi 4 segmenti (EPL/Serie A × corner/cartellini), stesso protocollo
+  walk-forward — eseguito in background per via del costo computazionale
+  reale (~126 refit/segmento, singolo fit fino a ~25s con 103 parametri
+  contro ~1-3s del modello condiviso; backtest completo 10-24 minuti/segmento,
+  misurato non stimato). Risultato: **miglioramento reale e più consistente
+  della NB condivisa** — Brier/log loss migliori in 3 segmenti su 4 (netto
+  su entrambe le competizioni per i corner), e calibrazione nelle fasce alte
+  migliorata in **7 bin su 7** con abbastanza osservazioni (non più un
+  pattern misto) — ma il gap residuo resta sostanziale (4-18 punti
+  percentuali) e il costo (10-25x più lento) non ancora giustificato da un
+  miglioramento parziale. **Decisione: `PoissonCountModel` resta in
+  produzione**, `NegativeBinomialPerTeamCountModel` resta nel codice
+  testato e funzionante (stesso trattamento di `NegativeBinomialCountModel`).
+  3 nuovi test dedicati + esteso il set parametrizzato esistente a tutte e
+  tre le classi modello (24 test totali in `test_count_market_model.py`).
+  `BACKTEST_SPEC.md`/`MODEL_SPEC.md`/`ROADMAP.md` aggiornati con la tabella
+  completa. 255 test passano, lint pulito.

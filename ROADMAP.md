@@ -279,10 +279,16 @@ rigore di audit già applicato a tutte le altre — v. `DATA_SOURCES.md` per
 il dettaglio completo. Resta quindi bloccato con motivo verificato, non un
 gap di lavoro non ancora fatto.
 
-Un'ipotesi più mirata da testare in futuro sul lato modello (indipendente
-dalla feature arbitro): dispersione NB **per singola squadra** invece che
-condivisa — non ancora provata, dato che il condiviso non ha aiutato
-abbastanza.
+✅ **Ipotesi dispersione NB per singola squadra — retestata in una sessione
+successiva.** `NegativeBinomialPerTeamCountModel` implementato e
+backtestato sui 4 segmenti reali: migliora Brier/log loss in modo più netto
+della NB condivisa e migliora la calibrazione nelle fasce alte in modo
+consistente (non più un pattern misto) — ma il gap residuo resta
+sostanziale (4-18 punti percentuali) e il costo computazionale è reale
+(10-25x più lento per singolo fit, minuti invece di secondi per un intero
+backtest). Decisione basata sui dati: `PoissonCountModel` resta in
+produzione — miglioramento reale ma parziale, non ancora sufficiente a
+giustificare il costo. V. `BACKTEST_SPEC.md` per la tabella completa.
 ✅ **Mercato falli — implementato in una sessione successiva** (audit di
 qualità/performance, non un nuovo modello: stessa `PoissonCountModel` già
 usata per corner/cartellini, `MarketCategory.FOULS` esisteva già

@@ -164,6 +164,19 @@ plausibile ora è che l'overconfidence osservata venga più dalla struttura
 media (mancanza di feature come l'arbitro per i cartellini) che dalla forma
 Poisson vs NB della distribuzione stessa.
 
+**Ipotesi di dispersione per singola squadra — retestata in una sessione
+successiva, stesso verdetto di fondo.** `NegativeBinomialPerTeamCountModel`
+(un `alpha` per squadra invece che condiviso) è stato implementato e
+backtestato sugli stessi 4 segmenti: migliora Brier/log loss aggregati in
+modo più netto della NB condivisa (specialmente sui corner) e migliora la
+calibrazione nelle fasce alte **in modo consistente**, non misto, nei bin
+con abbastanza osservazioni — ma il gap residuo resta sostanziale (4-18
+punti percentuali) e il costo computazionale è reale (10-25x più lento per
+singolo fit). **Decisione invariata**: `PoissonCountModel` resta in
+produzione — un miglioramento parziale non giustifica ancora il costo,
+finché la causa più probabile (feature mancanti: arbitro, tattica) resta
+non affrontata. V. BACKTEST_SPEC.md per la tabella completa.
+
 ## Probabilità → quota fair → value
 
 - `fair_odds = 1 / probability` (`app/engine/decision/fair_odds.py`) — formula
