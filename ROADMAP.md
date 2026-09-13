@@ -251,9 +251,33 @@ punto di rottura pulito nei bucket più bassi) — v. `BACKTEST_SPEC.md`
 significato di STRONG è anche stato corretto: il backtest mostra che una
 discrepanza maggiore correla con hit rate/ROI **peggiori**, non con
 un'opportunità — è un segnale di cautela, non di value, sia nel testo
-che nel codice/frontend. `risk_score.WEIGHTS` resta invece un punto di
-partenza esplicito, non ancora ricalibrato sul backtest reale (nessuna
-analisi tentata finora su questo punto specifico — resta aperto).
+che nel codice/frontend.
+
+✅ **`risk_score.WEIGHTS` — ricalibrazione tentata in una sessione
+successiva, esito: nessuna modifica, per un motivo strutturale verificato,
+non per pigrizia.** V. `BACKTEST_SPEC.md` "Calibrazione risk_score.WEIGHTS
+su dati reali" per il dettaglio completo. Prima di lanciare un esperimento,
+verificato (test dedicato, non solo ragionamento) che 5 dei 7 pesi
+(`uncertainty`, `data_quality`, `model_reliability`, `prediction_stability`,
+`lineup_dependency`) sono identici tra tutti i candidati della stessa
+partita nel backtest attuale (per design) — dato che `build_risk_ladder`
+ordina solo relativamente ad altri candidati della stessa partita, questi 5
+pesi sono strutturalmente non identificabili da questo backtest, non
+semplicemente "non ancora testati". Il solo grado di libertà rimasto (split
+`improbability`/`odds_magnitude`) è stato testato su una griglia reale
+(EPL+Serie A, `scripts/calibrate_risk_weights.py`, nuovo nel repository): la
+separazione hit-rate tra livelli di rischio migliora leggermente spostando
+peso verso `odds_magnitude` (le quote di chiusura reali predicono l'esito
+meglio di questo Dixon-Coles senza feature tattiche attive di default), ma
+seguire quel segnale fino in fondo renderebbe `risk_raw` via via ridondante
+con la sola quota di mercato — dato che `value` è per costruzione cieco a
+`odds_magnitude` ma sensibile a `improbability`, penalizzerebbe come "alto
+rischio" proprio le value bet genuine (il modello in disaccordo favorevole
+col mercato) che il progetto esiste per individuare. **Pesi non modificati**
+— decisione basata sui numeri e su questo vincolo strutturale insieme, non
+sull'uno senza l'altro, stesso standard delle altre decisioni "testato, non
+adottato" di questa roadmap (Platt/isotonica, correzioni xG/deep
+completions).
 
 ### 4. Corner/cartellini: la binomiale negativa non basta — serve la feature arbitro (e altre)
 ✅ Testata (v. punto 12 sopra): non risolve l'overconfidence nelle code alte in

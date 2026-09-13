@@ -764,6 +764,109 @@ già ingeriti, stesso pattern di `scripts/persist_backtest_results.py` per il
 caricamento dei record reali) — i numeri sopra sono il suo output diretto,
 non ricalcolati a mano.
 
+## Calibrazione risk_score.WEIGHTS su dati reali
+
+Ultimo punto rimasto esplicitamente aperto in questo documento (v. versione
+precedente di "Cosa manca" sotto): i pesi di `risk_score.WEIGHTS` non erano
+mai stati validati contro il backtest reale.
+
+**Scoperta preliminare, verificata prima di lanciare qualunque esperimento
+(non solo ragionata)**: nel backtest walk-forward attuale, 5 dei 7 pesi
+(`uncertainty`, `data_quality`, `model_reliability`, `prediction_stability`,
+`lineup_dependency`) sono **identici tra tutti i candidati della stessa
+partita** — per design, non per svista (v. "Approssimazioni dei fattori di
+rischio" sopra: `data_quality=1.0`/`prediction_stability=1.0`/
+`lineup_dependency=0.0` fissi, `uncertainty`/`model_reliability` variano nel
+tempo ma non tra candidati della stessa partita). Dato che `build_risk_ladder`
+ordina i candidati **solo relativamente ad altri candidati della stessa
+partita** (v. `risk_score.py`), un termine additivo costante per partita non
+può mai cambiare quell'ordinamento, qualunque valore gli si assegni —
+verificato con un test dedicato (script Python isolato, non solo l'argomento
+algebrico) prima di scrivere una sola riga dello script di calibrazione:
+scores assoluti diversi, **ranking identico**. Questi 5 pesi sono quindi
+**strutturalmente non identificabili** da questo backtest, non semplicemente
+"non ancora testati" — ricalibrarli sui suoi numeri sarebbe numerologia, non
+calibrazione. Restano quindi ai valori attuali, non toccati.
+
+**L'unico grado di libertà che sopravvive al contatto con questi dati** è lo
+split tra `improbability` e `odds_magnitude` (`compute_risk_raw`,
+`risk_score.py`): entrambi variano candidato per candidato all'interno della
+stessa partita (rispettivamente da `probability` e da `bookmaker_odds`), a
+differenza degli altri 5. `scripts/calibrate_risk_weights.py` (nuovo, nel
+repository) rigenera i candidati una sola volta per competizione (fit
+Dixon-Coles walk-forward, costoso) e poi ri-punteggia a costo quasi zero una
+griglia di split, mantenendo fissa la somma `improbability + odds_magnitude`
+(0.40, invariata rispetto ad oggi) e tutti gli altri 5 pesi esattamente come
+sono — così un'intera griglia costa un solo backtest per competizione, non
+uno per punto di griglia. Eseguito sugli stessi dati reali del resto di
+questo documento (EPL+Serie A, tutte le stagioni ingerite, refit=7 giorni):
+
+**Hit rate per livello di rischio, per frazione di `odds_magnitude` sul
+totale mobile 0.40** (0.25 = split attuale, 0.10/0.30):
+
+| odds_magnitude | L1–2 | L3–4 | L5–6 | L7–8 | L9–10 |
+|---|---|---|---|---|---|
+| 0.00 (solo improbability) | 57.9% / 57.7% | 41.6% / 40.6% | 34.4% / 35.5% | 23.9% / 23.1% | 21.2% / 21.5% |
+| 0.10 | 58.2% / 58.2% | 41.4% / 40.7% | 34.5% / 35.7% | 23.7% / 22.7% | 21.0% / 21.0% |
+| **0.25 (attuale)** | **58.5% / 58.8%** | **41.1% / 40.8%** | **34.5% / 35.9%** | **23.7% / 22.5%** | **20.9% / 20.0%** |
+| 0.50 | 59.3% / 59.5% | 41.2% / 40.6% | 34.3% / 35.3% | 23.0% / 22.8% | 20.7% / 19.5% |
+| 0.75 | 60.0% / 59.6% | 41.1% / 41.4% | 33.9% / 35.0% | 23.0% / 22.7% | 20.4% / 18.9% |
+| 1.00 (solo odds_magnitude) | 60.1% / 59.9% | 41.9% / 41.7% | 33.6% / 34.6% | 22.6% / 22.7% | 20.4% / 18.7% |
+
+(coppie EPL / Serie A, n=37.060/37.040 per riga — 10 livelli invece di 5
+distinti perché con soli 5 candidati grezzi per partita — 1X2 + O/U — livelli
+adiacenti condividono lo stesso candidato, stesso pattern già visibile nella
+tabella "Validazione empirica" sopra.) Il punteggio di monotonicità (coppie
+concordanti su 45, L_i ≥ L_j per i<j) è **45/45 per ogni split testato, su
+entrambi i campionati** — il ranking separa correttamente il rischio con
+qualunque split in questo intervallo, non solo con quello attuale.
+
+**Pattern reale, monotono, coerente su entrambi i campionati**: spostare peso
+da `improbability` a `odds_magnitude` allarga leggermente la separazione tra
+L1 e L9 (EPL: 36.7 → 39.7 punti; Serie A: 36.2 → 41.2 punti, dallo split
+0.00 all'1.00). **Non è rumore**: le quote di chiusura reali (bookmaker
+moderni) sono un predittore più forte dell'esito di quanto lo sia questo
+Dixon-Coles allenato solo su gol storici, senza feature tattiche/xG attive di
+default (v. sezioni sopra) — coerente con l'ipotesi "feature mancanti" già
+emersa più volte in questo documento, non una scoperta isolata.
+
+**Perché il peso non viene comunque spostato verso `odds_magnitude`,
+nonostante il numero migliori leggermente in quella direzione**: una ragione
+strutturale, non solo di gusto, verificabile direttamente dalla formula senza
+bisogno di altri dati. `value` (`app/engine/decision/value.py`) è
+`probability * bookmaker_odds - 1`, strettamente crescente in `probability` a
+parità di quota. A parità di `bookmaker_odds`, un candidato con `probability`
+più alta ha value più alto **e** `improbability` più bassa — ma `odds_magnitude`
+identica, perché quel fattore non vede mai `probability`. Più peso su
+`odds_magnitude` significa quindi, per costruzione, meno sensibilità di
+`risk_raw` esattamente al segnale che identifica una value bet (il modello in
+disaccordo favorevole col mercato) — portato all'estremo (split 1.00),
+`risk_raw` diventerebbe una riformulazione della sola quota di mercato,
+esattamente ciò che il design di `risk_score.py` dichiara di NON voler essere
+fin dal suo stesso docstring ("NOT an arbitrary probability threshold"), e
+penalizzerebbe come "alto rischio" proprio le value bet genuine (quota lunga
+perché il mercato è scettico, anche quando il modello ha ragione a
+dissentire) — l'esatto scenario che il value betting di questo progetto
+esiste per individuare.
+
+**Decisione, basata sui numeri E su questo vincolo strutturale, non
+sull'uno senza l'altro**: `WEIGHTS` **non modificato**.
+`improbability`/`odds_magnitude` restano a 0.30/0.10 — non perché lo split
+attuale vinca sulla separazione hit-rate grezza (non vince: la tabella sopra
+mostra un miglioramento piccolo ma reale spostandosi verso
+`odds_magnitude`), ma perché quel miglioramento è marginale sull'intervallo
+testato e comprato al prezzo di erodere l'indipendenza tra rischio e quota di
+mercato di cui il value betting ha bisogno — un compromesso che questa
+singola metrica non cattura. Stesso standard delle altre decisioni "testato,
+non adottato" di questo documento (Platt/isotonica, correzione xG, correzione
+deep completions): un segnale reale nei dati non basta da solo quando il
+quadro complessivo pesa nell'altra direzione.
+
+Script incluso nel repository (`scripts/calibrate_risk_weights.py`,
+riutilizzabile se in futuro cambia la composizione dei mercati/segnali
+disponibili nel backtest — v. suo stesso docstring per il dettaglio
+completo del ragionamento sopra).
+
 ## Cosa manca (onestamente)
 
 - ✅ Il refit più frequente (7 giorni, default) su tutte le 10 stagioni è
@@ -782,6 +885,12 @@ non ricalcolati a mano.
   ancora automatizzato in uno script dedicato.
 - ✅ ~~Non è stata eseguita alcuna ricalibrazione delle soglie di alert~~ —
   fatto (v. sezione dedicata sopra): `ALERT_THRESHOLD_STRONG` ricalibrata da
-  0.15 a 0.20 sui dati reali. **Resta aperta** solo la ricalibrazione dei
-  pesi di `risk_score.WEIGHTS` — nessuna analisi tentata finora su quel
-  punto specifico.
+  0.15 a 0.20 sui dati reali.
+- ✅ ~~Resta aperta la ricalibrazione dei pesi di `risk_score.WEIGHTS` —
+  nessuna analisi tentata finora su quel punto specifico~~ — fatto (v.
+  sezione dedicata sopra): 5 dei 7 pesi risultano strutturalmente non
+  identificabili da questo backtest (verificato, non solo argomentato); il
+  solo grado di libertà testabile (split improbability/odds_magnitude) è
+  stato testato su una griglia reale — **`WEIGHTS` non modificato**, per un
+  vincolo strutturale (indipendenza rischio/quota richiesta dal value
+  betting), non per pigrizia o assenza di segnale nei dati.

@@ -746,3 +746,38 @@ completi — è un indice.
     not exist" e il comando risolutivo (`createuser -s postgres`), invece
     di lasciare un utente macOS senza indicazioni per un errore che
     incontrerebbe quasi certamente al primo avvio.
+- Ricalibrazione di `risk_score.WEIGHTS` sui dati reali — ultimo punto
+  rimasto esplicitamente "resta aperto" in BACKTEST_SPEC.md. **Trovato,
+  prima di lanciare l'esperimento e verificato con un test dedicato (non
+  solo argomentato)**: 5 dei 7 pesi (uncertainty/data_quality/
+  model_reliability/prediction_stability/lineup_dependency) sono identici
+  tra tutti i candidati della stessa partita nel backtest attuale (per
+  design — v. `runner.py::_build_candidates`) — dato che il ranking è
+  sempre relativo ad altri candidati della stessa partita, un termine
+  costante non può mai cambiarlo: strutturalmente non identificabili da
+  questo backtest, non semplicemente "non ancora testati". Aggiunto un
+  parametro opzionale `weights` a `compute_risk_raw`/`score_candidates`/
+  `build_risk_ladder` (default invariato) e diviso
+  `run_walk_forward_backtest` in `generate_match_candidates` (costoso,
+  indipendente dai pesi) + `resolve_match_candidates` (economico,
+  dipendente dai pesi), così una griglia di split costa un solo fit per
+  competizione. Estratto `app/backtest/data_loading.py` da
+  `persist_backtest_results.py` (un vero script non può importare da un
+  altro script — scoperto eseguendo il nuovo script la prima volta, non
+  ipotizzato). Nuovo `scripts/calibrate_risk_weights.py`: testato lo split
+  improbability/odds_magnitude (l'unico grado di libertà rimasto) su una
+  griglia reale, EPL+Serie A, tutte le stagioni ingerite. **Risultato**:
+  la separazione hit-rate tra livelli di rischio migliora leggermente
+  spostando peso verso odds_magnitude (le quote di chiusura reali predicono
+  l'esito meglio di questo Dixon-Coles senza feature tattiche attive di
+  default), ma `value = probability * odds - 1` è per costruzione cieco a
+  odds_magnitude e sensibile a improbability — seguire il segnale fino in
+  fondo renderebbe risk_raw ridondante con la sola quota di mercato e
+  penalizzerebbe come "alto rischio" proprio le value bet genuine.
+  **`WEIGHTS` non modificato** — decisione basata sui numeri E su questo
+  vincolo strutturale insieme, stesso standard delle altre decisioni
+  "testato, non adottato" di questa sessione (Platt/isotonica, correzioni
+  xG/deep completions). V. BACKTEST_SPEC.md "Calibrazione risk_score.WEIGHTS
+  su dati reali" per la tabella completa e il ragionamento esteso;
+  MODEL_SPEC.md/ROADMAP.md aggiornati di conseguenza. 255 test passano,
+  lint pulito.

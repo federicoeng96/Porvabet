@@ -268,11 +268,30 @@ predizione, dipendenza da formazioni non ufficiali. Nel vertical slice:
 segnali sopra in un unico punteggio continuo 0–1; `build_risk_ladder`
 (`app/engine/decision/selection.py`) lo trasforma in un livello 1–10 per
 **ranking relativo tra i candidati della stessa partita**, non per soglia
-assoluta su una singola variabile — esattamente il vincolo del brief. I pesi
-attuali (`WEIGHTS` in `risk_score.py`) sono un punto di partenza esplicito, da
-ricalibrare quando il backtest per-livello-di-rischio (v. BACKTEST_SPEC.md)
-avrà abbastanza volume per giudicare se, es., il Risk 3 batte davvero il Risk 7
-su hit rate/ROI.
+assoluta su una singola variabile — esattamente il vincolo del brief.
+
+**Ricalibrazione di `WEIGHTS` sui dati reali — tentata, esito: nessuna
+modifica.** V. BACKTEST_SPEC.md "Calibrazione risk_score.WEIGHTS su dati
+reali" per il dettaglio completo; in sintesi: 5 dei 7 pesi (`uncertainty`,
+`data_quality`, `model_reliability`, `prediction_stability`,
+`lineup_dependency`) sono identici tra tutti i candidati della stessa
+partita nel backtest walk-forward attuale (per design, non per svista) —
+dato che il ranking è sempre relativo a candidati della stessa partita, un
+termine costante non può mai cambiarlo, quindi questi 5 pesi sono
+strutturalmente non identificabili dal backtest disponibile (verificato con
+un test dedicato, non solo argomentato). Il solo grado di libertà restante
+(lo split `improbability`/`odds_magnitude`) è stato testato su una griglia
+reale (EPL+Serie A): la separazione hit-rate tra livelli migliora
+leggermente spostando peso verso `odds_magnitude`, ma solo perché le quote
+di chiusura reali predicono l'esito meglio di questo Dixon-Coles
+"povero di feature" — spostare il peso in quella direzione renderebbe
+`risk_raw` via via più ridondante con la sola quota di mercato (`value =
+probability * odds - 1` è per costruzione cieco a `odds_magnitude` ma
+sensibile a `improbability`), penalizzando come "alto rischio" proprio le
+value bet genuine che il progetto esiste per individuare. **`WEIGHTS` resta
+quindi invariato** (0.30/0.10 sullo split, gli altri 5 pesi ai valori
+originali) — una decisione presa sui numeri e su questo vincolo, non
+un'omissione.
 
 ## Limite onesto sul numero di mercati nel vertical slice
 
