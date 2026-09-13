@@ -544,21 +544,29 @@ interfacce, senza refactoring del pre-match.
   la decisione di design che allora era stata segnalata invece di presa
   unilateralmente è stata poi esplicitamente autorizzata dall'utente, che ha
   scelto l'opzione (b) descritta sotto).
-  1. **"n/d" invece di riga saltata (opzione (b) scelta)**:
-     `_build_candidates_and_predictions` ora fa get-or-create di
-     `Market`/`MarketOutcome` per MATCH_RESULT/TOTAL_GOALS (non dipende più
-     da righe già esistenti) e persiste **sempre** una `Prediction` per ogni
-     esito con probabilità calcolabile dal modello: con quota reale
-     (`Candidate`/`RiskSelection`, come prima) quando esiste un `OddsQuote`
-     liquido, altrimenti con `bookmaker_odds=None`/`value=None` — mai una
-     riga assente, mai un prezzo inventato. Esposto via API come
-     `NoOddsEstimateOut` (generalizzazione del precedente `CountEstimateOut`,
-     uno per esito, non solo coppie Over/Under — necessario per i 3 esiti di
-     MATCH_RESULT). `RiskFactors`/`Candidate` **non sono stati resi
-     opzionali**: la scelta presa è stata la (b) "tipo di riga separato",
-     non la (a) — il layer di rischio/valore esistente resta invariato e
-     testato, la stima "n/d" vive semplicemente fuori dalla risk ladder,
-     esattamente come già faceva CORNERS/CARDS.
+  1. **"n/d" invece di riga saltata (opzione (b) scelta all'epoca — poi
+     superata, v. sotto)**: `_build_candidates_and_predictions` fa
+     get-or-create di `Market`/`MarketOutcome` per MATCH_RESULT/TOTAL_GOALS
+     (non dipende più da righe già esistenti) e persiste **sempre** una
+     `Prediction` per ogni esito con probabilità calcolabile dal modello: con
+     quota reale quando esiste un `OddsQuote` liquido, altrimenti
+     `bookmaker_odds=None`/`value=None` — mai una riga assente, mai un
+     prezzo inventato. All'epoca la scelta fu la (b) "tipo di riga
+     separato" (`NoOddsEstimateOut`), non la (a): `RiskFactors`/`Candidate`
+     restavano obbligatori su `bookmaker_odds`, la stima "n/d" viveva fuori
+     dalla risk ladder. **Questo è cambiato il 13/09**, dopo che un vero
+     giro end-to-end aveva mostrato che, quando NESSUN mercato ha una quota
+     (il caso normale per ogni fixture futura reale qui), l'intera analisi
+     si interrompeva con un errore invece di mostrare "n/d". Su decisione
+     esplicita dell'utente, `Candidate.bookmaker_odds`/
+     `RiskFactors.bookmaker_odds`/`ScoredCandidate.value` sono ora `float |
+     None` (di fatto anche l'opzione (a), ma solo per MATCH_RESULT/
+     TOTAL_GOALS): un esito senza quota entra comunque nella risk ladder,
+     ranked su probabilità/incertezza/affidabilità (mai un prezzo
+     sostitutivo inventato — il peso del fattore quota viene redistribuito
+     sugli altri). `NoOddsEstimateOut`/`additional_estimates` restano, ma
+     ristretti a CORNERS/CARDS (mai parte del meccanismo ladder) — v.
+     `VERIFICATION_LOG.md` sezione 7 per il dettaglio completo.
   2. **Fixture future reali**: `FootballDataOrgFixtureProvider`
      (`app/providers/football_data_org/provider.py`, categoria A) +
      `ingest_upcoming_fixture` chiudono il secondo blocco — vedi la sezione
