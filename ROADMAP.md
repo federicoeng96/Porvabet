@@ -3,6 +3,70 @@
 Stato reale al termine di questo primo vertical slice (non un piano ideale —
 riflette cosa è già fatto e cosa manca davvero).
 
+## Quadro onesto: verificato con dati reali vs costruito vs bloccato
+
+Richiesto esplicitamente dall'utente per capire dove siamo davvero, non solo
+cosa esiste nel codice. Tre categorie, nessuna ambiguità tra "esiste" e
+"verificato dal vivo":
+
+**✅ Verificato end-to-end con dati reali** (non solo unit test/mock):
+- Ingestione storica football-data.co.uk: 7.600 partite reali (EPL+Serie A,
+  2015/16–2024/25), analisi/backtest/API/frontend testati su questi dati.
+- Motore statistico (Dixon-Coles, `PoissonCountModel`): fit e predizioni
+  reali su queste 7.600 partite.
+- Backtest walk-forward a 10 stagioni, incluso il precompute a 10 livelli di
+  rischio (`build_risk_ladder` dentro il loop, non solo metriche isolate per
+  mercato) — hit rate/ROI/calibrazione reali in `BACKTEST_SPEC.md`.
+- Soglie alert: ricalibrate sul backtest reale (74.100 predizioni risolte),
+  non più valori provvisori dal brief — v. `BACKTEST_SPEC.md`.
+- Decision Layer "n/d" (mai riga saltata quando manca una quota): verificato
+  sia con test automatici sia con un giro reale in browser (Playwright) —
+  ma con una partita **sintetica** seminata per il test, quote finte stile
+  Betfair, non ancora con una vera partita futura + una vera quota Betfair
+  insieme (v. sotto).
+- Corriere dello Sport (moduli tattici Serie A): verificato dal vivo contro
+  la pagina reale, provider funzionante e testato — ma non ancora collegato
+  a `run_analysis_for_match`/`lineup_reconciliation.py` (v. punto 7 sotto).
+
+**🔨 Costruito e testato con mock/dati sintetici, MAI verificato dal vivo
+con dati reali**:
+- `BetfairExchangeOddsProvider`: testato contro le classi di risorse reali
+  di `betfairlightweight` (schema fedele, non dati live). Login testato dal
+  vivo con credenziali reali — bloccato dalla rete della sandbox (v.
+  bloccato sotto), non dal codice.
+- `FootballDataOrgFixtureProvider`: endpoint/schema JSON v4 verificati dal
+  vivo con richieste reali (non simulate) contro `api.football-data.org`,
+  ma senza una chiave valida non è mai stata eseguita una chiamata
+  autenticata reale — testato solo con `httpx.MockTransport` sullo schema
+  verificato. **Bloccato di nuovo stanotte**: l'utente ha comunicato di
+  aver impostato `FOOTBALL_DATA_API_KEY`, ma non risulta presente in
+  nessuna forma in questo ambiente (controllato `env`, `printenv`, una
+  shell di login pulita, `/proc/1/environ`, `.bashrc`/`.profile` di ogni
+  utente) — non un problema di nome variabile diverso, la chiave
+  semplicemente non arriva a questa sessione. Finché non si risolve, i
+  punti 1-3 richiesti stanotte (fixture reali, mapping nomi squadra
+  football-data.org ↔ football-data.co.uk/understat, giro end-to-end con
+  una vera fixture) restano non eseguibili da qui.
+- Intelligence Engine (`app/engine/intelligence/`): livello di validazione
+  costruito e testato, nessuna fonte reale di segnali collegata.
+
+**⛔ Bloccato, con motivo verificato (non solo "non ancora fatto")**:
+- Copertura Betfair per corner/cartellini: non verificabile da questa
+  sandbox — bloccato l'intero dominio betfair.com, documentazione inclusa
+  (v. `DATA_SOURCES.md`).
+- Player props: nessuna fonte gratuita trovata con formazioni a livello di
+  singolo giocatore in forma strutturata e a rischio accettabile (Gazzetta/
+  BBC categoria C con divieto esplicito; Sky Italia bloccata tecnicamente;
+  Sky UK/SOS Fanta senza struttura affidabile) — v. punto 7 sotto per il
+  dettaglio completo, riverificato stanotte su richiesta esplicita.
+- ePlay24, fbref.com, Gazzetta dello Sport, BBC Sport, legaseriea.it:
+  bloccati/vietati, per motivi diversi e già documentati per ciascuno in
+  `DATA_SOURCES.md` — nessuna decisione presa di aggirarli.
+- xG-adjusted Dixon-Coles e correzione corner da deep completions: testate
+  su dati reali (10 stagioni), **correttamente non attivate** perché i
+  numeri reali non giustificano l'attivazione — non "bloccate", una
+  decisione presa sui dati.
+
 ## Fatto in questo slice
 
 1. ✅ Architettura + analisi di fattibilità fonti dati (`ARCHITECTURE.md`,
@@ -85,13 +149,27 @@ riflette cosa è già fatto e cosa manca davvero).
     TOTAL_GOALS anche senza quota liquida (mai una riga assente, mai un
     prezzo inventato — v. `NoOddsEstimateOut`). `FootballDataOrgFixtureProvider`
     (categoria A) popola la prossima giornata reale Premier League/Serie A
-    (non ancora testato dal vivo: manca una chiave gratuita, ma la rete di
-    questa sandbox non è bloccata verso questa API). Il precompute dei 10
-    livelli di rischio (1 principale + 2 alternative, `build_risk_ladder`)
-    e la sua simulazione nel backtest walk-forward (hit rate/ROI per
-    livello, v. `BACKTEST_SPEC.md`) **erano già entrambi implementati e
-    testati prima di questa nota** — verificato di nuovo direttamente nel
-    codice, non solo a memoria, prima di dichiararli "fatti".
+    (non ancora testato dal vivo con una chiamata autenticata: l'utente ha
+    comunicato di aver impostato la chiave, ma non risulta in questo
+    ambiente — v. "Quadro onesto" sopra; la rete di questa sandbox non è
+    comunque bloccata verso questa API, a differenza di Betfair). Il
+    precompute dei 10 livelli di rischio (1 principale + 2 alternative,
+    `build_risk_ladder`) e la sua simulazione nel backtest walk-forward
+    (hit rate/ROI per livello, v. `BACKTEST_SPEC.md`) **erano già entrambi
+    implementati e testati prima di questa nota** — verificato di nuovo
+    direttamente nel codice, non solo a memoria, prima di dichiararli
+    "fatti".
+20. ✅ **Soglie alert ricalibrate sul backtest reale**: bucket di
+    `discrepancy_pct` sulle 74.100 predizioni risolte del backtest a 10
+    stagioni mostrano hit rate/ROI **monotonicamente peggiori** al crescere
+    della discrepanza (39,5%→22,2% hit rate, ROI da -3,0% a -14,6%) — il
+    contrario dell'assunzione implicita del brief originale (discrepanza
+    grande = opportunità). `ALERT_THRESHOLD_STRONG` spostata da 0.15 a 0.20
+    (punto di rottura reale nei dati), `ALERT_THRESHOLD_INTERESTING`
+    confermata a 0.10 (nessun punto di rottura pulito), testo di
+    `classify_alert`/`AlertPopover.tsx` corretto per non parlare più di
+    "opportunità"/mispricing ma di segnale di cautela — v. `BACKTEST_SPEC.md`
+    "Calibrazione soglie alert su dati reali" per la tabella completa.
 
 ## Prossimi passi concreti (in ordine di valore/dipendenza)
 
@@ -141,9 +219,17 @@ peggioramenti netti altrove (EPL CARDS/TOTAL_GOALS) nello stesso esperimento.
 tentativo indipendente (dopo NB e più stagioni) che non risolve
 l'overconfidence — rafforza l'ipotesi che il problema sia nella struttura
 media (feature mancanti), non nella forma/calibrazione della probabilità.
-`risk_score.WEIGHTS` e `value.ALERT_THRESHOLD_*` restano punti di partenza
-espliciti, non ancora ricalibrati sul backtest reale (nessuna analisi
-tentata finora su questo punto specifico — resta aperto).
+`value.ALERT_THRESHOLD_*` **ricalibrate stanotte** sul backtest reale
+(74.100 predizioni risolte): STRONG spostata da 0.15 a 0.20 dove i dati
+mostrano il vero punto di rottura, INTERESTING confermata a 0.10 (nessun
+punto di rottura pulito nei bucket più bassi) — v. `BACKTEST_SPEC.md`
+"Calibrazione soglie alert su dati reali" per la tabella completa. Il
+significato di STRONG è anche stato corretto: il backtest mostra che una
+discrepanza maggiore correla con hit rate/ROI **peggiori**, non con
+un'opportunità — è un segnale di cautela, non di value, sia nel testo
+che nel codice/frontend. `risk_score.WEIGHTS` resta invece un punto di
+partenza esplicito, non ancora ricalibrato sul backtest reale (nessuna
+analisi tentata finora su questo punto specifico — resta aperto).
 
 ### 4. Corner/cartellini: la binomiale negativa non basta — serve la feature arbitro (e altre)
 ✅ Testata (v. punto 12 sopra): non risolve l'overconfidence nelle code alte in
@@ -286,12 +372,37 @@ controllo a dati osservabili implementato, quindi non sono nemmeno elencati
 come categorie valide finché non ne esiste uno.
 
 ### 7. Player props
-Richiede: formazioni reali (probabile prima ufficiale, poi da fonti
-concordi/discordanti — riconciliazione già implementata in
-`lineup_reconciliation.py`, ma senza una fonte reale collegata oggi è
-inutilizzata), un modello di minutaggio atteso, e un modello di produzione
-individuale condizionato al minutaggio. Vedi MODEL_SPEC.md per la motivazione
-di un modello dedicato invece di riusare Dixon-Coles per singolo giocatore.
+Richiede: formazioni **a livello di singolo giocatore** (probabile prima
+ufficiale, poi da fonti concordi/discordanti — riconciliazione già
+implementata in `lineup_reconciliation.py`), un modello di minutaggio
+atteso, e un modello di produzione individuale condizionato al minutaggio.
+Vedi MODEL_SPEC.md per la motivazione di un modello dedicato invece di
+riusare Dixon-Coles per singolo giocatore.
+
+**Verificato in una sessione successiva** (l'utente ha chiesto di
+controllare se Gazzetta/Sky/BBC — auditate mesi fa — fossero mai state
+davvero implementate come provider, non solo classificate): non c'era
+alcun gap da colmare. L'audit in `DATA_SOURCES.md` aveva già dato verdetto
+**negativo** per tutte tranne una: Gazzetta (categoria C, Data Mining
+Policy esplicita), SOS Fanta (rischio di affiliazione + prosa non
+strutturata), Sky Sport Italia (bloccata tecnicamente da un WAF Akamai),
+BBC Sport (categoria C, il divieto più esplicito del progetto), Sky Sports
+UK (nessuna struttura equivalente trovata) — tutte correttamente **non
+implementate**, con `GazzettaLineupProvider`/`SosFantaLineupProvider` che
+esistono comunque come stub espliciti (`app/providers/probable_lineups/`,
+`NotImplementedError`, mai un dato inventato). L'unica con verdetto
+positivo, **Corriere dello Sport**, è realmente implementata
+(`CorriereDelloSportLineupProvider`, con test) — ma copre solo il modulo
+tattico di squadra (es. "4-3-3"), mai i nomi dei giocatori, quindi non
+sblocca comunque il player-props qui sopra, che ha bisogno proprio di
+quel livello di dettaglio. **Nota separata, non legata a questa
+verifica**: `CorriereDelloSportLineupProvider` stesso non risulta ancora
+collegato a `lineup_reconciliation.py`/`run_analysis_for_match` da nessuna
+parte nel codice (confermato con una ricerca diretta) — coerente con
+quanto ARCHITECTURE.md già dichiara ("reale, testato, non ancora collegato
+all'analisi live"), quindi non una scoperta nuova, solo una conferma che
+resta vero. Anche se lo fosse, non sbloccherebbe comunque i player props
+per il motivo sopra (solo modulo, mai nomi giocatore).
 
 ### 8. Serie A
 ✅ Già ingerita e analizzata insieme a Premier League (v. punti 9-10 sopra) —

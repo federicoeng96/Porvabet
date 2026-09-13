@@ -262,3 +262,45 @@ completi — è un indice.
   automatica, popover alert con le soglie provvisorie richieste
   10%/15%) — già completo. Aggiornati ARCHITECTURE.md/MODEL_SPEC.md/
   README.md per coerenza con lo stato reale del codice.
+- `eb520ab` — Aggiunto `MORNING_SUMMARY.md`: riepilogo della sessione
+  notturna (Betfair collegato, "n/d" generalizzato, fixture reali via
+  football-data.org, verifica precompute 10 livelli, coerenza documentale).
+- `f7e907b` — `football-data.org`: nuova `FootballDataOrgInvalidApiKeyError`
+  distingue "chiave assente" da "chiave presente ma rifiutata" (400/403
+  verificati dal vivo), con messaggio che nomina la variabile d'ambiente.
+  Box "Azione richiesta ora" aggiunto in `RUNNING_LOCALLY.md`. 174 test
+  passano, lint pulito.
+- `4d8a929` — `tests/test_backtest_runner.py`: primo test automatico
+  dedicato per la simulazione a 10 livelli di rischio dentro il backtest
+  walk-forward (prima solo eseguita manualmente). 178 test passano.
+- `2213806` — Ri-scaricato un CSV reale e fresco (E0.csv, Premier League
+  2024/25): confermato che football-data.co.uk non ha mai avuto colonne
+  quota per corner/cartellini (solo conteggi) — limite strutturale del
+  formato, non temporaneo. Corretto un riferimento obsoleto in
+  `MODEL_SPEC.md` su Betfair.
+- `500c848` — Scansione completa di tutti i file tracciati: nessuna
+  credenziale reale committata. Corretta un'ultima imprecisione in
+  `BACKTEST_SPEC.md` (corner/cartellini elencati per errore come bloccati
+  da assenza di modello — hanno già risultati reali; solo i player props
+  sono bloccati da modello mancante).
+- `9d6f474` — Aggiunta sezione 13/09 a `MORNING_SUMMARY.md`.
+- `b4f5a79` — **Ricalibrate le soglie alert sul backtest reale** (74.100
+  predizioni risolte, 10 stagioni): hit rate/ROI peggiorano
+  monotonicamente al crescere della discrepanza modello-quota (39,5%→22,2%
+  hit rate, ROI -3,0%→-14,6%) — il contrario dell'assunzione implicita del
+  brief. `ALERT_THRESHOLD_STRONG` spostata da 0.15 a 0.20 (punto di
+  rottura reale nei dati), `ALERT_THRESHOLD_INTERESTING` confermata a
+  0.10. Testo di `classify_alert`/`AlertPopover.tsx` corretto: STRONG è
+  ora un segnale di cautela, non più descritto come "potenziale
+  mispricing". Rimossa `alert_explanation()`, funzione morta mai chiamata.
+  178 test passano, lint pulito, build frontend verificata.
+- Verificato che Gazzetta/Sky/BBC (auditate mesi fa in `DATA_SOURCES.md`)
+  non avessero un gap implementazione-vs-audit: nessun gap trovato, il
+  verdetto era già correttamente negativo per tutte tranne Corriere dello
+  Sport (già implementato, ma copre solo il modulo tattico, mai i nomi
+  giocatore — non sblocca i player props). `ROADMAP.md` aggiornato con un
+  nuovo "Quadro onesto: verificato con dati reali vs costruito vs
+  bloccato" che distingue esplicitamente cosa è verificato end-to-end con
+  dati reali, cosa è costruito ma mai verificato dal vivo (in primis
+  `FootballDataOrgFixtureProvider` senza chiave funzionante in questo
+  ambiente) e cosa resta bloccato con motivo verificato.
