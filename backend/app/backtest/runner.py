@@ -59,6 +59,12 @@ class ResolvedPrediction:
     is_home_selection: bool
 
 
+@dataclass(frozen=True)
+class MatchCandidates:
+    match: HistoricalMatchRecord
+    candidates: list[Candidate]
+
+
 def _to_goal_input(m: HistoricalMatchRecord) -> GoalMatchInput:
     return GoalMatchInput(
         home_team=m.home_team_name,
@@ -98,16 +104,26 @@ def _batches_by_window(
     return batches
 
 
-def run_walk_forward_backtest(
+def generate_match_candidates(
     matches: list[HistoricalMatchRecord],
     min_training_matches: int = MIN_TRAINING_MATCHES,
     refit_batch_days: int = REFIT_BATCH_DAYS,
     total_goals_line: float = 2.5,
-) -> list[ResolvedPrediction]:
+) -> list[MatchCandidates]:
+    """The expensive, weight-independent half of `run_walk_forward_backtest`:
+    walks forward refitting Dixon-Coles exactly as that function does, and
+    builds each match's `Candidate` list (with `RiskFactors` already
+    resolved), but stops short of building the risk ladder / resolving
+    outcomes — that step depends only on `risk_score.WEIGHTS` and is cheap to
+    redo (see `resolve_match_candidates`). Split out so a weight-calibration
+    experiment that wants to try many weight vectors (see
+    `scripts/calibrate_risk_weights.py`, BACKTEST_SPEC.md "Calibrazione
+    risk_score.WEIGHTS") pays the model-fitting cost once instead of once per
+    vector — fitting does not depend on `risk_score.WEIGHTS` at all."""
     all_sorted = sorted(matches, key=lambda m: m.kickoff_utc)
     batches = _batches_by_window(all_sorted, refit_batch_days)
 
-    resolved: list[ResolvedPrediction] = []
+    out: list[MatchCandidates] = []
     reliability_history: list[BetRecord] = []  # only ever appended AFTER resolving a match
     training_pool: list[HistoricalMatchRecord] = []
 
@@ -132,24 +148,7 @@ def run_walk_forward_backtest(
             candidates = _build_candidates(model, m, uncertainty, reliability, total_goals_line)
             if not candidates:
                 continue
-            ladder = build_risk_ladder(candidates)
-
-            for level_selection in ladder:
-                sc = level_selection.main
-                won = _outcome_won(sc.candidate, m, total_goals_line)
-                pred = ResolvedPrediction(
-                    match_date=m.kickoff_utc.date(),
-                    home_team=m.home_team_name,
-                    away_team=m.away_team_name,
-                    market_category=sc.candidate.market_category,
-                    outcome_code=sc.candidate.outcome_label,
-                    probability=sc.candidate.probability,
-                    bookmaker_odds=sc.candidate.bookmaker_odds,
-                    won=won,
-                    risk_level=level_selection.risk_level,
-                    is_home_selection=sc.candidate.outcome_label == "HOME",
-                )
-                resolved.append(pred)
+            out.append(MatchCandidates(match=m, candidates=candidates))
 
             # Update rolling reliability using only the MATCH_RESULT main candidate,
             # once per match (not once per risk level), to avoid inflating the
@@ -167,7 +166,48 @@ def run_walk_forward_backtest(
 
         training_pool.extend(batch)
 
+    return out
+
+
+def resolve_match_candidates(
+    match_candidates: list[MatchCandidates],
+    weights: dict[str, float] | None = None,
+    total_goals_line: float = 2.5,
+) -> list[ResolvedPrediction]:
+    """The cheap, weight-dependent half of `run_walk_forward_backtest` — see
+    `generate_match_candidates`."""
+    resolved: list[ResolvedPrediction] = []
+    for mc in match_candidates:
+        ladder = build_risk_ladder(mc.candidates, weights=weights)
+        for level_selection in ladder:
+            sc = level_selection.main
+            won = _outcome_won(sc.candidate, mc.match, total_goals_line)
+            resolved.append(
+                ResolvedPrediction(
+                    match_date=mc.match.kickoff_utc.date(),
+                    home_team=mc.match.home_team_name,
+                    away_team=mc.match.away_team_name,
+                    market_category=sc.candidate.market_category,
+                    outcome_code=sc.candidate.outcome_label,
+                    probability=sc.candidate.probability,
+                    bookmaker_odds=sc.candidate.bookmaker_odds,
+                    won=won,
+                    risk_level=level_selection.risk_level,
+                    is_home_selection=sc.candidate.outcome_label == "HOME",
+                )
+            )
     return resolved
+
+
+def run_walk_forward_backtest(
+    matches: list[HistoricalMatchRecord],
+    min_training_matches: int = MIN_TRAINING_MATCHES,
+    refit_batch_days: int = REFIT_BATCH_DAYS,
+    total_goals_line: float = 2.5,
+    weights: dict[str, float] | None = None,
+) -> list[ResolvedPrediction]:
+    match_candidates = generate_match_candidates(matches, min_training_matches, refit_batch_days, total_goals_line)
+    return resolve_match_candidates(match_candidates, weights=weights, total_goals_line=total_goals_line)
 
 
 def _build_candidates(

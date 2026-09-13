@@ -57,11 +57,13 @@ class RiskLevelSelection:
     rationale: str
 
 
-def score_candidates(candidates: list[Candidate]) -> list[ScoredCandidate]:
+def score_candidates(
+    candidates: list[Candidate], weights: dict[str, float] | None = None
+) -> list[ScoredCandidate]:
     scored = [
         ScoredCandidate(
             candidate=c,
-            risk_raw=compute_risk_raw(c.risk_factors),
+            risk_raw=compute_risk_raw(c.risk_factors, weights=weights),
             value=(
                 expected_value(c.probability, c.bookmaker_odds)
                 if c.bookmaker_odds is not None
@@ -83,11 +85,13 @@ def _assign_risk_levels(scored: list[ScoredCandidate]) -> dict[int, list[ScoredC
     return buckets
 
 
-def build_risk_ladder(candidates: list[Candidate]) -> list[RiskLevelSelection]:
+def build_risk_ladder(
+    candidates: list[Candidate], weights: dict[str, float] | None = None
+) -> list[RiskLevelSelection]:
     if not candidates:
         raise ValueError("Cannot build a risk ladder with zero candidates")
 
-    scored = score_candidates(candidates)
+    scored = score_candidates(candidates, weights=weights)
     buckets = _assign_risk_levels(scored)
 
     # Player-market selections can never be the main pick for a level while their

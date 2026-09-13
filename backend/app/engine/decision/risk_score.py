@@ -53,7 +53,14 @@ WEIGHTS = {
 assert abs(sum(WEIGHTS.values()) - 1.0) < 1e-9
 
 
-def compute_risk_raw(factors: RiskFactors) -> float:
+def compute_risk_raw(factors: RiskFactors, weights: dict[str, float] | None = None) -> float:
+    """`weights` defaults to the module-level `WEIGHTS` (the live/production
+    values). Accepting an override exists solely so a backtest experiment can
+    score the same candidates under a different weight vector without
+    monkeypatching the module global — see
+    `scripts/calibrate_risk_weights.py` and BACKTEST_SPEC.md "Calibrazione
+    risk_score.WEIGHTS"."""
+    base_weights = WEIGHTS if weights is None else weights
     improbability = 1.0 - factors.probability
 
     if factors.bookmaker_odds is None:
@@ -64,12 +71,12 @@ def compute_risk_raw(factors: RiskFactors) -> float:
         # name). Instead redistribute its weight proportionally across the factors
         # we can actually observe, same "never guess a number we don't have" rule
         # used everywhere else in this module/project.
-        weights = {k: w for k, w in WEIGHTS.items() if k != "odds_magnitude"}
+        weights = {k: w for k, w in base_weights.items() if k != "odds_magnitude"}
         remaining = sum(weights.values())
         weights = {k: w / remaining for k, w in weights.items()}
         odds_term = 0.0
     else:
-        weights = WEIGHTS
+        weights = base_weights
         # log-odds normalized against a generous 1..15 decimal-odds range so typical
         # football markets span most of [0, 1] without long-odds outliers saturating it.
         odds_term = weights["odds_magnitude"] * _clip01(

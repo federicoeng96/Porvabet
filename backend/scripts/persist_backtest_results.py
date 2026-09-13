@@ -35,17 +35,16 @@ from datetime import date
 from sqlalchemy import select
 
 from app.backtest.count_market_runner import run_count_market_backtest, to_bet_records
+from app.backtest.data_loading import load_goal_records, load_season_matches
 from app.backtest.metrics import BetRecord
 from app.backtest.persistence import persist_backtest_run
 from app.backtest.runner import REFIT_BATCH_DAYS, run_walk_forward_backtest
 from app.db.session import SessionLocal
 from app.engine.statistical.count_market_model import CountMatchInput, PoissonCountModel
-from app.models.core import Competition, Season
+from app.models.core import Competition
 from app.models.enums import ModelFamily
-from app.models.market import Market, MarketOutcome, OddsQuote
 from app.models.match import Match
 from app.models.stats import TeamMatchStats
-from app.providers.base.dto import HistoricalMatchRecord
 
 ALL_SEASONS = {
     "2015/2016", "2016/2017", "2017/2018", "2018/2019", "2019/2020",
@@ -55,47 +54,11 @@ VERSION_LABEL = "2026.09.12b-full-history"  # ModelVersion.version_label is varc
 
 
 def _season_matches(db, competition_code: str) -> list[Match]:
-    comp = db.scalar(select(Competition).where(Competition.code == competition_code))
-    seasons = db.scalars(select(Season).where(Season.competition_id == comp.id)).all()
-    season_ids = [s.id for s in seasons if s.label in ALL_SEASONS]
-    return list(
-        db.scalars(select(Match).where(Match.season_id.in_(season_ids), Match.home_goals_ft.is_not(None))).all()
-    )
+    return load_season_matches(db, competition_code, season_labels=ALL_SEASONS)
 
 
-def _load_goal_records(db, competition_code: str, matches: list[Match]) -> list[HistoricalMatchRecord]:
-    records = []
-    for m in matches:
-        market_rows = db.scalars(select(Market).where(Market.match_id == m.id)).all()
-        odds_1x2: dict[str, dict[str, float]] = {}
-        odds_ou: dict[str, dict[str, float]] = {}
-        for market in market_rows:
-            cat = market.category.value if hasattr(market.category, "value") else market.category
-            outcomes = db.scalars(select(MarketOutcome).where(MarketOutcome.market_id == market.id)).all()
-            for outcome in outcomes:
-                quotes = db.scalars(select(OddsQuote).where(OddsQuote.market_outcome_id == outcome.id)).all()
-                for q in quotes:
-                    if cat == "MATCH_RESULT":
-                        code_map = {"HOME": "H", "DRAW": "D", "AWAY": "A"}
-                        odds_1x2.setdefault(q.bookmaker, {})[code_map[outcome.code]] = q.decimal_odds
-                    elif cat == "TOTAL_GOALS":
-                        odds_ou.setdefault(q.bookmaker, {})[outcome.code] = q.decimal_odds
-        records.append(
-            HistoricalMatchRecord(
-                competition_code=competition_code,
-                season_label="multi",
-                kickoff_utc=m.kickoff_utc,
-                home_team_name=m.home_team.name,
-                away_team_name=m.away_team.name,
-                home_goals_ft=m.home_goals_ft,
-                away_goals_ft=m.away_goals_ft,
-                home_goals_ht=m.home_goals_ht,
-                away_goals_ht=m.away_goals_ht,
-                closing_odds_1x2=odds_1x2,
-                closing_odds_over_under_2_5=odds_ou,
-            )
-        )
-    return records
+def _load_goal_records(db, competition_code: str, matches: list[Match]):
+    return load_goal_records(db, competition_code, matches)
 
 
 def _load_count_records(db, matches: list[Match], extractor) -> list[CountMatchInput]:
