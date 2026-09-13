@@ -721,6 +721,28 @@ completi — è un indice.
   letto). Corretto con `|| true` sulle due pipeline e default
   `${major:-0}`/`${minor:-0}` nel confronto successivo; ri-testato lo stesso
   scenario per confermare che ora lo script prosegue invece di abortire.
-  Resto dell'audit: nessun altro problema di encoding/idempotenza trovato in
-  `setup.ps1`/`start.ps1`/`setup.sh` (riletti per intero), verifica di
-  `start.sh` in corso.
+  Riletto anche `start.sh`: nessun problema di idempotenza (nessuna
+  operazione "CREATE", solo controllo porta prima di avviare backend/
+  frontend, come `start.ps1`); lo script non usa `set -e` (solo `-u` e
+  `pipefail`) quindi la stessa classe di bug non si applica qui. Trovati e
+  corretti due punti reali:
+  - `start.sh`: nel fallback senza terminale grafico (ne' `osascript` ne'
+    `gnome-terminal` ne' `xterm` disponibili — il caso di questa stessa
+    sandbox, verificato), il messaggio diceva solo "log in /tmp" senza il
+    nome del file, costringendo a indovinarlo. Corretto per mostrare il
+    percorso esatto del file di log. Verificato con un test dedicato che
+    isola la funzione: il messaggio ora stampa il percorso reale e il file
+    viene scritto esattamente li'.
+  - `setup.sh`: il messaggio d'errore per la preparazione del database
+    copriva solo "password sbagliata"/"connessione rifiutata", ma
+    assumeva implicitamente che un ruolo PostgreSQL chiamato `postgres`
+    esista gia' — vero sull'installer Windows EDB (documentato e
+    verificato in questa sessione) ma **non** su un'installazione
+    Homebrew su macOS, che di default non crea alcun ruolo `postgres` (usa
+    il nome utente del sistema operativo) — comportamento noto e
+    ampiamente documentato di Homebrew, non verificabile dal vivo in
+    questa sandbox Linux (nessun macOS disponibile). Aggiunto un terzo
+    messaggio d'errore che nomina esplicitamente "role \"postgres\" does
+    not exist" e il comando risolutivo (`createuser -s postgres`), invece
+    di lasciare un utente macOS senza indicazioni per un errore che
+    incontrerebbe quasi certamente al primo avvio.

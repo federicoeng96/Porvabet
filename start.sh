@@ -56,8 +56,9 @@ open_terminal_window() {
     elif command -v xterm >/dev/null 2>&1; then
         xterm -T "$title" -e bash -c "$cmd; exec bash" &
     else
-        warn "Non trovo un terminale grafico noto — avvio $title in background in questa stessa finestra (log in /tmp)."
-        bash -c "$cmd" >"/tmp/porvabet_${title// /_}.log" 2>&1 &
+        local logfile="/tmp/porvabet_${title// /_}.log"
+        warn "Non trovo un terminale grafico noto - avvio $title in background, log in: $logfile"
+        bash -c "$cmd" >"$logfile" 2>&1 &
     fi
 }
 

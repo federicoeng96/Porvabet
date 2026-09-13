@@ -137,6 +137,9 @@ if [ "$DB_OK" -ne 0 ]; then
     echo "    Dettaglio: $PSQL_OUTPUT"
     echo "    Errore comune: se 'psql -U postgres' chiede una password che non conosci, prova"
     echo "    'sudo -u postgres psql' al posto di 'psql -U postgres' (comune su Linux)."
+    echo "    Errore comune (macOS con Homebrew): se il messaggio sopra contiene"
+    echo "    'role \"postgres\" does not exist', Homebrew non crea un utente 'postgres' per"
+    echo "    default - creane uno con 'createuser -s postgres' poi rilancia questo script."
     exit 1
 else
     ok "Database pronti (porvabet, porvabet_test) - creati se mancanti, lasciati invariati se gia' presenti."
