@@ -1,5 +1,29 @@
 # Eseguire Porvabet in locale
 
+## ⚡ Azione richiesta ora: chiave gratuita football-data.org
+
+Per popolare le partite future reali (prossima giornata Premier League/Serie
+A) serve una chiave API **gratuita** di football-data.org — nessun'altra
+azione la può sostituire, va fatta da un umano:
+
+1. Vai su **https://www.football-data.org** e clicca **"Get started"**
+   (in alto a destra).
+2. Registrati con la tua email (piano **Free**, nessuna carta di credito
+   richiesta — v. `https://www.football-data.org/pricing`, riga "Free
+   €0,00/mo").
+3. Dopo la registrazione, la chiave (`X-Auth-Token`) è visibile nella tua
+   area account su football-data.org.
+4. Impostala come variabile d'ambiente `FOOTBALL_DATA_ORG_API_KEY` in
+   `backend/.env` (vedi `backend/.env.example`).
+
+Una volta impostata, **non serve necessariamente aspettare una sessione
+locale**: la rete di questa sandbox raggiunge `api.football-data.org`
+normalmente (a differenza di Betfair, bloccato — v. sotto), quindi la
+verifica end-to-end di `scripts/ingest_upcoming_fixtures.py` può essere
+completata anche qui, appena la chiave è disponibile.
+
+---
+
 Questo progetto viene sviluppato in un ambiente sandbox remoto (container
 effimero, ricreato a ogni sessione). Quell'ambiente ha un limite di rete
 concreto e verificato che **non esiste sul computer dell'utente**: l'IP di

@@ -12,6 +12,7 @@ from app.models.enums import DataSourceCategory
 from app.providers.football_data_org.provider import (
     FootballDataOrgApiKeyMissingError,
     FootballDataOrgFixtureProvider,
+    FootballDataOrgInvalidApiKeyError,
 )
 
 # Real response shape for GET /v4/competitions/PL, copied (fields relevant to
@@ -128,7 +129,35 @@ def test_get_next_matchday_fixtures_excludes_finished_matches():
     assert arsenal_fixture.kickoff_utc.isoformat() == "2026-09-20T14:00:00+00:00"
 
 
-def test_wrong_api_key_raises_http_error_not_silent_empty_list():
+def test_wrong_api_key_raises_clear_error_not_silent_empty_list():
+    # A configured-but-wrong key must never be treated as "no key" (which
+    # degrades silently via is_available()=False) nor surface a bare
+    # httpx.HTTPStatusError — the user needs a message naming the env var
+    # and pointing at the real API's own rejection reason, not a traceback.
     provider = FootballDataOrgFixtureProvider(api_key="wrong-key", http_client=_fake_client())
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(FootballDataOrgInvalidApiKeyError) as exc_info:
         provider.get_next_matchday_fixtures("EPL")
+    message = str(exc_info.value)
+    assert "FOOTBALL_DATA_ORG_API_KEY" in message
+    assert "Your API token is invalid" in message  # the real API's own wording, not paraphrased
+
+
+def test_wrong_api_key_error_also_raised_from_get_current_matchday():
+    provider = FootballDataOrgFixtureProvider(api_key="wrong-key", http_client=_fake_client())
+    with pytest.raises(FootballDataOrgInvalidApiKeyError):
+        provider.get_current_matchday("EPL")
+
+
+def test_unrelated_http_error_still_surfaces_normally():
+    # A 404 (or any non-auth-shaped error) must NOT be swallowed/reworded —
+    # only the two specific auth failure modes verified live get a custom
+    # message; everything else stays a plain httpx.HTTPStatusError.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"message": "not found"})
+
+    client = httpx.Client(
+        base_url="https://api.football-data.org/v4", transport=httpx.MockTransport(handler)
+    )
+    provider = FootballDataOrgFixtureProvider(api_key="real-test-key", http_client=client)
+    with pytest.raises(httpx.HTTPStatusError):
+        provider.get_current_matchday("EPL")

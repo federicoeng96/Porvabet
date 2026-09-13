@@ -106,6 +106,36 @@ class FootballDataOrgApiKeyMissingError(RuntimeError):
     pass
 
 
+class FootballDataOrgInvalidApiKeyError(RuntimeError):
+    """Raised when football-data.org itself rejects the configured key (as
+    opposed to no key being configured at all — see
+    `FootballDataOrgApiKeyMissingError`). Wraps the API's own error message
+    (e.g. "Your API token is invalid.") into something a user can act on
+    without reading this provider's source or an httpx traceback."""
+
+
+def _raise_for_clear_auth_error(response: httpx.Response) -> None:
+    """Turns an auth-related 400/403 from football-data.org (verified live
+    this session — see module docstring) into a message that names the exact
+    env var and what to check, instead of a bare `httpx.HTTPStatusError` with
+    only a status code. Any other error status is left to `raise_for_status()`
+    to report as-is — this only special-cases the auth failure modes actually
+    observed."""
+    if response.status_code not in (400, 403):
+        return
+    try:
+        api_message = response.json().get("message", "")
+    except ValueError:
+        api_message = response.text[:200]
+    if "token" in api_message.lower() or "subscription" in api_message.lower():
+        raise FootballDataOrgInvalidApiKeyError(
+            f"football-data.org rejected FOOTBALL_DATA_ORG_API_KEY (HTTP "
+            f"{response.status_code}): {api_message!r}. Check that the key was "
+            "copied correctly from your football-data.org account (Get Started "
+            "at football-data.org) — see DATA_SOURCES.md/RUNNING_LOCALLY.md."
+        )
+
+
 def _season_label_from_start_date(start_date: str) -> str:
     """football-data.org gives the real season boundary (`currentSeason.startDate`,
     e.g. "2021-08-13") — derived from that real value, never guessed from a
@@ -148,6 +178,7 @@ class FootballDataOrgFixtureProvider(SportsDataProvider):
         code = COMPETITION_TO_CODE[competition_code]
         self._rate_limiter.acquire()
         response = self._client.get(f"/competitions/{code}", headers=self._headers())
+        _raise_for_clear_auth_error(response)
         response.raise_for_status()
         payload = response.json()
         return payload["currentSeason"]["currentMatchday"]
@@ -166,6 +197,7 @@ class FootballDataOrgFixtureProvider(SportsDataProvider):
             params={"matchday": matchday},
             headers=self._headers(),
         )
+        _raise_for_clear_auth_error(response)
         response.raise_for_status()
         payload = response.json()
 

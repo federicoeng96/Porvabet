@@ -28,6 +28,7 @@ from app.models.core import Source
 from app.providers.football_data_org.provider import (
     FootballDataOrgApiKeyMissingError,
     FootballDataOrgFixtureProvider,
+    FootballDataOrgInvalidApiKeyError,
 )
 
 
@@ -53,6 +54,11 @@ def main() -> None:
             try:
                 records = provider.get_next_matchday_fixtures(competition)
             except FootballDataOrgApiKeyMissingError as exc:
+                print(f"  [SKIP] {competition}: {exc}")
+                continue
+            except FootballDataOrgInvalidApiKeyError as exc:
+                # Key is set but football-data.org itself rejected it — worth
+                # a distinct message from a generic network/parsing failure.
                 print(f"  [SKIP] {competition}: {exc}")
                 continue
             except Exception as exc:  # noqa: BLE001 — report and continue with other competitions
