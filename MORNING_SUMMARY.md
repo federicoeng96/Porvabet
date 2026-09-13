@@ -1,4 +1,11 @@
-# Riepilogo sessione notturna autonoma
+# Riepilogo sessioni notturne autonome
+
+> Due sessioni, in ordine cronologico. **La più recente (13/09) è in fondo
+> al file** — leggi da lì se hai già letto la prima. Per il dettaglio
+> riga-per-riga di ogni commit vedi `CHANGELOG.md`; per lo stato reale di
+> ogni parte del sistema vedi `ROADMAP.md`.
+
+## Sessione del 12/09
 
 Buongiorno. Questo documento riassume tutto il lavoro fatto in autonomia
 durante la notte, dopo il tuo messaggio "Lavora in autonomia per tutta la
@@ -176,3 +183,131 @@ commit. 5 commit pushati durante la sessione notturna vera e propria
 (`fc37ef8`..`491b85a`), più i 2 del blocco Betfair immediatamente precedente
 (`730c3e5`, `27b5621`) — 7 commit in totale in questa sessione continua, tutti
 su `claude/sports-betting-prematch-engine-5m4z1t`.
+
+## Sessione del 13/09
+
+Buongiorno di nuovo. Hai chiesto di continuare sui 5 punti che avevi
+elencato (football-data.org pronto all'uso, verifica backtest 10 livelli,
+corner/cartellini via football-data.co.uk, rifinitura frontend, pulizia
+generale) con le stesse due regole ferme di sempre (nessuna spesa, nessuna
+fonte nuova con divieto ToS mai valutata). Ecco cosa ho fatto, punto per
+punto.
+
+### 1. football-data.org — pronto, manca solo la tua chiave
+
+- Confermato l'env var: `FOOTBALL_DATA_ORG_API_KEY` (in `backend/.env.example`
+  e `app/config.py`).
+- **Trovato e corretto un gap reale**: una chiave presente ma sbagliata
+  prima produceva solo un `httpx.HTTPStatusError` generico. Ora
+  `FootballDataOrgInvalidApiKeyError` intercetta i due casi 400/403
+  verificati dal vivo ieri sera (token non valido, sottoscrizione
+  insufficiente) e restituisce un messaggio che nomina la variabile
+  d'ambiente e riporta il motivo esatto dell'API — mai un errore criptico.
+  Altri errori HTTP (es. 404) restano invariati, non "inghiottiti" dal
+  nuovo wrapping.
+- Aggiunti 3 nuovi test (chiave errata su entrambi i metodi pubblici, errore
+  non auth-correlato non alterato) — 8 test totali sul provider.
+- Aggiunto un box **"⚡ Azione richiesta ora"** in cima a `RUNNING_LOCALLY.md`
+  con i passi espliciti (URL, cosa aspettarti, nessuna carta di credito) —
+  non serve più cercarlo nel resto del documento.
+
+### 2. Backtest a 10 livelli — era già implementato, ma senza test dedicato
+
+Verificato di nuovo, con più attenzione questa volta: `run_walk_forward_backtest`
+chiama davvero `build_risk_ladder` per ogni partita e registra `risk_level`
+per ogni predizione — i numeri "per livello di rischio" in `BACKTEST_SPEC.md`
+vengono davvero da qui. **Ma ho trovato un gap reale**: nessun test
+automatico esisteva per questo modulo, solo l'esecuzione manuale che ha
+prodotto quei numeri. Aggiunto `tests/test_backtest_runner.py` (dati
+sintetici, veloce): verifica che tutti e 10 i livelli vengano prodotti,
+che `risk_level` non sia mai `None`/fuori range, e che `segment()` (le
+stesse metriche hit rate/ROI pubblicate) funzioni sull'output reale.
+Corretto anche un punto in `BACKTEST_SPEC.md` che confondeva la copertura
+test del motore di analisi live con quella (prima assente) del backtest
+runner.
+
+### 3. Corner/cartellini via football-data.co.uk — verificato dal vivo, esito negativo confermato
+
+Scaricato un CSV reale e fresco (`E0.csv`, Premier League 2024/25, 120
+colonne) e ispezionato l'elenco colonne completo, non solo ricordato da
+sessioni precedenti: **zero colonne quota per corner (`HC`/`AC`) o
+cartellini (`HY`/`AY`/`HR`/`AR`)** — solo conteggi grezzi, come già
+documentato. Le uniche colonne quota sono 1X2, Over/Under 2.5 gol e
+handicap asiatico (con tutti i bookmaker e le versioni di chiusura).
+Conferma quindi che è un limite strutturale del formato di questo
+fornitore, non un gap di copertura temporanea. Nessuna nuova fonte
+valutata per questo (avrebbe richiesto uscire dal perimetro delle due
+regole ferme). Corner/cartellini restano "n/d" — confermato, non un bug.
+
+### 4. Frontend — testato davvero in un browser, non solo letto nel codice
+
+Ho seminato una partita futura sintetica con quote finte stile Betfair
+(solo 1X2, come sarebbe nella realtà oggi), avviato backend e frontend, e
+usato Playwright (Chromium reale) per navigare la pagina, cliccare
+l'alert e cambiare lo slider del rischio — non solo riletto il codice.
+Risultato, con screenshot a supporto:
+- **Popover alert**: mostra tutti e 7 i campi richiesti (mercato, outcome,
+  probabilità modello, quota bookmaker, quota fair, valore, motivo) più la
+  frase di cautela richiesta. Funziona, cliccabile, si apre/chiude.
+- **Cambio rischio**: verificato con un listener di rete che **zero
+  chiamate API** partono quando sposti lo slider di gruppo o l'input per
+  singola partita — solo "AGGIORNA ANALISI" ricalcola, esattamente come
+  richiesto, non solo nel backend ma anche nell'interazione reale in
+  pagina.
+- Sezione "n/d" presente e leggibile sulla pagina di dettaglio.
+- Unico neo trovato: un 404 innocuo in console (manca un file
+  `favicon.ico`) — zero impatto funzionale, non l'ho toccato per non
+  spendere tempo su un dettaglio puramente cosmetico non richiesto.
+- Ripulita la partita di test dal database di sviluppo dopo la verifica.
+
+### 5. Pulizia generale
+
+- Scansionati tutti i file tracciati da git: nessuna credenziale reale in
+  nessun file (solo `.env.example` con valori vuoti), nessun `.env` mai
+  committato in tutta la cronologia.
+- Cercato ogni riferimento residuo a diretta.it come fonte di calendario:
+  nessuno trovato — tutte le menzioni riguardano correttamente solo le
+  quote (Betson) o la cronaca della correzione verso football-data.org.
+- Trovata e corretta un'ultima imprecisione in `BACKTEST_SPEC.md` (corner/
+  cartellini elencati come "bloccati da assenza di modello", quando in
+  realtà hanno già risultati reali — il vero limite è solo l'assenza di
+  quota).
+
+### Decisioni prese in autonomia
+
+- **Aggiunto un test automatico al backtest runner** anche se non
+  esplicitamente richiesto in quei termini: un modulo che produce i numeri
+  pubblicati in `BACKTEST_SPEC.md` senza nessuna copertura test automatica
+  era un rischio reale (una regressione futura sarebbe stata scoperta solo
+  alla prossima esecuzione costosa sui dati reali), coerente con "verifica
+  che sia ben documentato" ma spinto un passo oltre verso "e anche testato
+  automaticamente".
+- **Non ho aggiunto un favicon** per il 404 innocuo trovato nel browser:
+  puramente cosmetico, zero impatto funzionale, fuori scope rispetto ai
+  punti richiesti.
+- **Non ho valutato nuove fonti per corner/cartellini** oltre a
+  football-data.co.uk (già richiesto esplicitamente) — qualunque altra
+  fonte avrebbe richiesto uscire dal perimetro delle due regole ferme.
+
+### Cosa resta bloccato dai due vincoli espliciti
+
+Come ieri notte: nessuno dei due vincoli (spesa di denaro, fonte nuova con
+divieto ToS mai valutato) è mai entrato in gioco stasera. L'unico blocco
+reale che resta è la tua registrazione su football-data.org — non
+delegabile, richiede un'email reale.
+
+### Prossimo passo più importante
+
+Immutato rispetto a ieri notte: **registrati su football-data.org e
+passami la chiave**. Con quella, posso verificare dal vivo l'intera
+pipeline fixture-futura anche da questa sandbox (rete non bloccata verso
+quell'API), e — combinata con una tua verifica Betfair dal tuo computer —
+avremmo per la prima volta partite future reali + quote reali insieme,
+il primo vero test end-to-end del prodotto come sarà usato normalmente.
+
+---
+
+Test puliti (178), lint pulito, verifica reale in browser (Playwright, non
+solo lettura di codice) prima di dichiarare il frontend conforme. 4 commit
+pushati questa sessione (`f7e907b`..`500c848`), tutti su
+`claude/sports-betting-prematch-engine-5m4z1t`.
