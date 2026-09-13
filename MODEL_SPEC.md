@@ -187,12 +187,19 @@ Poisson vs NB della distribuzione stessa.
   termini relativi apposta (un divario di 5 punti percentuali non è la stessa
   cosa a probabilità 90% o 20%).
 
-## Alert: soglie (provvisorie)
+## Alert: soglie (calibrate sul backtest reale, non più provvisorie)
 
-`<10%` nessun alert, `10–15%` interessante, `>15%` forte — esattamente i valori
-indicati nel brief, marcati esplicitamente come provvisori
-(`app/engine/decision/value.py`, `ALERT_THRESHOLD_*`) fino a una calibrazione
-sui risultati del backtest.
+`<10%` nessun alert, `10–20%` interessante, `>20%` forte
+(`app/engine/decision/value.py`, `ALERT_THRESHOLD_*`). La soglia STRONG era
+`15%` nella stesura iniziale del brief; spostata a `20%` dopo aver verificato
+contro le 74.100 predizioni reali del backtest walk-forward a 10 stagioni
+(v. BACKTEST_SPEC.md "Calibrazione soglie alert su dati reali" per la
+tabella completa) — hit rate/ROI peggiorano monotonicamente con la
+discrepanza, e il punto di rottura reale nei dati è al 20%, non al 15%.
+**Anche il significato di "forte" è cambiato**: non più "potenziale
+opportunità/mispricing" (l'assunzione implicita del brief), ma un segnale di
+cautela — storicamente, quando questo modello si discosta molto dal
+mercato, ha più spesso torto, non ragione.
 
 ## Incertezza, qualità dati, affidabilità modello
 

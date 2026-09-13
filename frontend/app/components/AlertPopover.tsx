@@ -2,10 +2,17 @@
 
 import type { AlertOut, SelectionOut } from "../lib/types";
 
+// Wording calibrated against the real 10-season backtest (see
+// BACKTEST_SPEC.md "Calibrazione soglie alert su dati reali"): a bigger
+// model-vs-market gap does NOT mean the model is more likely right — ROI
+// gets steadily worse as the gap grows. STRONG is a caution flag ("il
+// modello si discosta molto dal book, storicamente un segnale che il
+// modello ha più spesso torto"), deliberately never framed as an
+// opportunity or "mispricing".
 const LEVEL_LABEL: Record<AlertOut["level"], string> = {
   NONE: "",
   INTERESTING: "Discrepanza interessante",
-  STRONG: "Discrepanza marcata (potenziale mispricing)",
+  STRONG: "Discrepanza marcata (cautela: storicamente il modello ha più spesso torto qui)",
 };
 
 export default function AlertPopover({

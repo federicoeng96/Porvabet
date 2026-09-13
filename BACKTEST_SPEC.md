@@ -558,6 +558,69 @@ sola riconferma della correlazione, non una verifica onesta di
 un'ipotesi aperta. Nessuna modifica alla decisione: `compute_
 deep_completions_adjustment_factor` resta testato, non collegato.
 
+## Calibrazione soglie alert su dati reali
+
+Le soglie `ALERT_THRESHOLD_INTERESTING`/`ALERT_THRESHOLD_STRONG`
+(`app/engine/decision/value.py`) erano provvisorie dalla stesura iniziale del
+brief, mai verificate contro il backtest reale. Verificato in una sessione
+successiva: preso l'intero output del backtest walk-forward reale a 10
+stagioni (lo stesso che produce i numeri sopra — **74.100 predizioni
+risolte in totale**, EPL+Serie A, tutti i mercati/livelli di rischio),
+calcolato `discrepancy_pct` reale per ognuna (la stessa quantità che
+`classify_alert` classifica) e aggregato per fascia di `|discrepancy|`:
+
+| Fascia | n | Hit rate | ROI | Brier | Log loss |
+|---|---|---|---|---|---|
+| 0–5% | 17.376 | 39.5% | −3.0% | 0.207 | 0.601 |
+| 5–10% | 15.234 | 39.4% | −0.7% | 0.209 | 0.607 |
+| 10–15% | 12.493 | 38.2% | −2.9% | 0.205 | 0.597 |
+| 15–20% | 8.922 | 36.3% | −2.7% | 0.206 | 0.598 |
+| 20–30% | 9.666 | 32.5% | −7.5% | 0.200 | 0.583 |
+| 30%+ | 10.409 | 22.2% | −14.6% | 0.167 | 0.535 |
+
+**Risultato onesto, e opposto all'assunzione implicita nel brief originale**:
+una discrepanza modello-mercato più grande **non** significa che il modello
+abbia più probabilità di avere ragione — hit rate e ROI peggiorano
+**monotonicamente** al crescere della discrepanza, non migliorano. La fascia
+30%+ è marcatamente la peggiore (hit rate 22.2% contro 39.5% della fascia
+0-5%, ROI −14.6%). La tabella di calibrazione per fascia (probabilità media
+predetta vs hit rate osservato) mostra inoltre che il modello è
+**overconfident proprio nella fascia di discrepanza più alta** (predetto
+24.9%, osservato 22.2%, gap +2.7 punti) — coerente con l'overconfidence
+nelle code alte già documentata sopra per la calibrazione generale, qui
+isolata specificamente sulla fascia che l'alert "forte" segnala.
+
+**Conclusione e modifica applicata**: le due soglie non separavano bene
+"probabile opportunità" da "rumore", perché quella lettura non è supportata
+dai dati — quello che la discrepanza segnala davvero è "il modello si
+discosta molto dal book", che qui correla con una performance **peggiore**
+del modello, non migliore. Applicate due modifiche, entrambe motivate dai
+numeri sopra, non a istinto:
+1. **`ALERT_THRESHOLD_STRONG` spostata da 0.15 a 0.20`**: le fasce 10-15%/
+   15-20% si comportano in modo simile (ROI −2.9%/−2.7%), mentre il vero
+   peggioramento comincia nettamente al 20% (−7.5%, poi −14.6%) — 0.20 è
+   dove si trova il reale punto di rottura nei dati, non un arrotondamento
+   arbitrario.
+2. **`ALERT_THRESHOLD_INTERESTING` resta a 0.10**: le fasce 0-5%/5-10%/
+   10-15% non mostrano un punto di rottura pulito (ROI oscilla tra
+   −3.0%/−0.7%/−2.9%, verosimilmente per la composizione di mercati/livelli
+   di rischio in ciascuna fascia più che per un vero effetto soglia) — non
+   c'è nei dati un segnale altrettanto netto per giustificare uno
+   spostamento qui.
+3. **Riformulato il linguaggio dell'alert** (`classify_alert`'s docstring,
+   `AlertPopover.tsx`): non più "discrepanza marcata (potenziale
+   mispricing)", che implicava un'opportunità — ora un esplicito segnale di
+   cautela ("storicamente il modello ha più spesso torto qui"), coerente
+   con quanto la tabella sopra mostra davvero. Trovata anche, durante questo
+   lavoro, una funzione morta (`alert_explanation()` in `value.py`, mai
+   chiamata da nessuna parte, con lo stesso testo obsoleto duplicato) —
+   rimossa invece di lasciarla come fonte di confusione futura.
+
+Script di analisi non incluso nel repository (esecuzione una tantum sui dati
+già ingeriti, stesso pattern di `scripts/persist_backtest_results.py` per il
+caricamento dei record reali) — i numeri sopra sono il suo output diretto,
+non ricalcolati a mano.
+
 ## Cosa manca (onestamente)
 
 - ✅ Il refit più frequente (7 giorni, default) su tutte le 10 stagioni è
@@ -574,6 +637,8 @@ deep_completions_adjustment_factor` resta testato, non collegato.
   `calibration_curve` copre la prima; una vera analisi di stabilità
   richiederebbe di confrontare backtest su finestre temporali diverse, non
   ancora automatizzato in uno script dedicato.
-- Non è stata eseguita alcuna ricalibrazione dei pesi (`risk_score.WEIGHTS`) o
-  delle soglie di alert sulla base di questi risultati — sono riportati come
-  input per una ricalibrazione futura, non ancora applicata.
+- ✅ ~~Non è stata eseguita alcuna ricalibrazione delle soglie di alert~~ —
+  fatto (v. sezione dedicata sopra): `ALERT_THRESHOLD_STRONG` ricalibrata da
+  0.15 a 0.20 sui dati reali. **Resta aperta** solo la ricalibrazione dei
+  pesi di `risk_score.WEIGHTS` — nessuna analisi tentata finora su quel
+  punto specifico.
