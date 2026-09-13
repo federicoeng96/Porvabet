@@ -304,3 +304,19 @@ completi — è un indice.
   dati reali, cosa è costruito ma mai verificato dal vivo (in primis
   `FootballDataOrgFixtureProvider` senza chiave funzionante in questo
   ambiente) e cosa resta bloccato con motivo verificato.
+- Roadmap punto 7 (prossimo item): **riverificata dal vivo la feature
+  arbitro per il modello cartellini** (item 4 di "Prossimi passi
+  concreti"), bloccata da mesi solo come "parser non ancora scritto".
+  Verificato con richieste di rete reali da questa sandbox: `aia-figc.it`
+  dietro sfida Cloudflare "Just a moment..." (stesso blocco di
+  fbref.com/betfair.com), `pgmol.com` con connessione TCP azzerata (stesso
+  blocco geografico di betfair.com). `premierleague.com` è raggiungibile
+  ma è una SPA React lato client (nessun contenuto articolo nell'HTML
+  grezzo) — non perseguita oltre: la sua API interna
+  (`footballapi.pulselive.com`) non è mai stata auditata come fonte a sé,
+  e usarla per un dominio dati nuovo senza lo stesso audit ToS/rischio
+  già applicato a ogni altra fonte violerebbe la regola di questo
+  progetto. `DATA_SOURCES.md`/`source_registry.py`/`ROADMAP.md`
+  aggiornati con il motivo reale del blocco. Nessun cambio di codice
+  (solo documentazione + note del registry), 178 test passano, lint
+  pulito.

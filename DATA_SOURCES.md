@@ -246,10 +246,39 @@ e `app/ingestion/source_registry.py`):
 ### AIA-FIGC (designazioni arbitrali) e Premier League/PGMOL
 - **Cosa offre**: designazioni arbitrali per giornata, come pagine HTML pubbliche
   (non API) — confermato che entrambe pubblicano contenuti per la stagione
-  corrente (2025/26). Confidenza media (verificato tramite titoli/URL di ricerca,
-  non un fetch diretto del DOM in questa sessione).
-- **Stato nel codice**: non ancora implementato un parser (registrato nel source
-  registry, `is_implemented=False`) — v. ROADMAP.md per il feature arbitro.
+  corrente (2025/26).
+- **Riverificato dal vivo in questa sessione** (prima del feature arbitro per il
+  modello cartellini, v. ROADMAP.md punto 4): entrambe le fonti risultano
+  **bloccate a livello di rete da questa sandbox**, non solo "parser non ancora
+  scritto":
+  - `www.aia-figc.it`: `/robots.txt` e le pagine restituiscono la stessa sfida
+    Cloudflare "Just a moment..." (managed challenge, HTTP 403) già vista su
+    fbref.com/betfair.com — nessun contenuto reale raggiungibile senza un
+    browser reale che risolva la sfida JS.
+  - `pgmol.com`: connessione TCP azzerata (`Recv failure: Connection reset by
+    peer`) su `/robots.txt` — bloccato a un livello ancora più basso di
+    Cloudflare, stesso tipo di blocco geografico/anti-bot già visto per l'intero
+    dominio `betfair.com`.
+  - `premierleague.com` (dove PGMOL/Premier League a volte pubblicano le
+    designazioni come articoli news): `robots.txt` è raggiungibile e permissivo,
+    ma il sito è una SPA React lato client — l'HTML servito non contiene alcun
+    contenuto articolo (verificato scaricando `/news`: solo lo shell vuoto).
+    Servirebbe un browser reale (Playwright) per renderizzare il JS, individuare
+    in modo affidabile gli articoli "designazioni arbitrali" tra le news generiche
+    (nessun pattern URL/titolo verificato), e comunque non è garantito che la
+    designazione sia pubblicata abbastanza in anticipo rispetto al momento in cui
+    gira l'analisi pre-match. Non perseguito oltre in questa sessione: la
+    sotto-API interna del sito (`footballapi.pulselive.com`, raggiungibile e non
+    disallowata da robots.txt, verificata con una query di prova) non è mai
+    stata auditata come fonte a sé — usarla per un dominio dati nuovo (designazioni
+    arbitrali) senza un audit ToS/rischio legale dedicato violerebbe la stessa
+    regola già seguita per ogni altra fonte di questo progetto, quindi non
+    utilizzata.
+- **Stato nel codice**: non implementato (registrato nel source registry,
+  `is_implemented=False`) — ora per un motivo verificato di rete/architettura,
+  non solo perché "non ancora scritto" — v. ROADMAP.md punto 4 per il dettaglio
+  e cosa resterebbe da fare per sbloccarlo (audit dedicato di `pulselive.com`
+  o un tentativo da una rete non bloccata).
 
 ### Transfermarkt
 - **Cosa offre**: rose, trasferimenti, valori di mercato.
@@ -1165,7 +1194,7 @@ Nessun provider Premier League aggiunto.
 | RSS/Atom generico | A | ✅ | News, URL da configurazione |
 | fbref.com | A | ❌ | Bloccato da Cloudflare — decisione utente: non aggirare |
 | StatsBomb Open Data | A | ❌ | Non copre stagioni correnti |
-| AIA-FIGC / PGMOL | A | ❌ | Parser non ancora scritto |
+| AIA-FIGC / PGMOL | A | ❌ | Bloccati a livello di rete da questa sandbox (verificato, non solo "parser non scritto") |
 | Transfermarkt | A | ❌ | ToS non verificato a fondo |
 | understat.com | B | ✅ | Riclassificato da A: robots.txt disallow-all. Riparato (nuovo endpoint), flag richiesto |
 | WhoScored | B | ❌ | Flag di conferma richiesto, scraping non implementato |

@@ -62,6 +62,13 @@ con dati reali**:
 - ePlay24, fbref.com, Gazzetta dello Sport, BBC Sport, legaseriea.it:
   bloccati/vietati, per motivi diversi e già documentati per ciascuno in
   `DATA_SOURCES.md` — nessuna decisione presa di aggirarli.
+- Feature arbitro per il modello cartellini (AIA-FIGC, `pgmol.com`):
+  riverificata dal vivo stanotte, entrambe bloccate a livello di rete da
+  questa sandbox (sfida Cloudflare / connessione azzerata, stesso pattern
+  di fbref.com/betfair.com) — v. punto 4 sotto e `DATA_SOURCES.md` per il
+  dettaglio, incluso perché la SPA di premierleague.com non è stata
+  perseguita come alternativa (richiederebbe un audit ToS dedicato della
+  sua API interna, mai fatto finora).
 - xG-adjusted Dixon-Coles e correzione corner da deep completions: testate
   su dati reali (10 stagioni), **correttamente non attivate** perché i
   numeri reali non giustificano l'attivazione — non "bloccate", una
@@ -236,11 +243,29 @@ analisi tentata finora su questo punto specifico — resta aperto).
 modo consistente. **Conclusione aggiornata**: il problema non sembra essere
 principalmente la forma Poisson-vs-NB della distribuzione, ma l'assenza di
 feature esplicative nella struttura media attacco/difesa — in primis
-l'arbitro per i cartellini (bloccato dall'assenza di dati arbitro, v. punto 5
-sotto per AIA-FIGC/PGMOL) e feature tattiche per i corner (v. punto 6 sotto).
-Un'ipotesi più mirata da testare in futuro: dispersione NB **per singola
-squadra** invece che condivisa — non ancora provata, dato che il condiviso
-non ha aiutato abbastanza.
+l'arbitro per i cartellini e feature tattiche per i corner (v. punto 6 sotto).
+
+**Feature arbitro: riverificata in questa sessione, resta bloccata per un
+motivo di rete, non solo "dati non ingeriti".** AIA-FIGC (designazioni Serie
+A) e `pgmol.com` (Premier League) sono le due fonti candidate (categoria A,
+`app/ingestion/source_registry.py`), ma entrambe risultano bloccate a
+livello di rete da questa sandbox: `www.aia-figc.it` dietro una sfida
+Cloudflare "Just a moment..." (stesso blocco di fbref.com/betfair.com),
+`pgmol.com` con connessione TCP azzerata (stesso blocco geografico
+dell'intero dominio betfair.com). `premierleague.com` stesso è raggiungibile
+e con `robots.txt` permissivo, ma è una SPA React lato client (nessun
+contenuto articolo nell'HTML grezzo) — richiederebbe un browser reale
+(Playwright) più un audit ToS/rischio dedicato della sua API interna
+(`footballapi.pulselive.com`, raggiungibile ma mai auditata come fonte),
+non tentato qui per non introdurre una fonte dati nuova senza lo stesso
+rigore di audit già applicato a tutte le altre — v. `DATA_SOURCES.md` per
+il dettaglio completo. Resta quindi bloccato con motivo verificato, non un
+gap di lavoro non ancora fatto.
+
+Un'ipotesi più mirata da testare in futuro sul lato modello (indipendente
+dalla feature arbitro): dispersione NB **per singola squadra** invece che
+condivisa — non ancora provata, dato che il condiviso non ha aiutato
+abbastanza.
 Il mercato falli (dati già ingeriti, `TeamMatchStats.fouls_committed`) non
 ha ancora un modello/mercato dedicato — i falli non sono tipicamente un
 mercato scommesse standalone come corner/cartellini, priorità bassa.

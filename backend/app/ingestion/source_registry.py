@@ -83,15 +83,20 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         name="AIA-FIGC referee designations",
         category=DataSourceCategory.A_UNRESTRICTED,
         is_implemented=False,
-        notes="Public HTML pages (not an API). Parser not yet implemented in this slice.",
+        notes="Public HTML pages (not an API). Verified this session: www.aia-figc.it is behind "
+        "a Cloudflare managed challenge from this sandbox (same block as fbref.com/betfair.com) "
+        "-- not reachable without a real browser solving the JS challenge. See DATA_SOURCES.md.",
     ),
     SourceDefinition(
         key="pgmol_premier_league",
         name="Premier League / PGMOL match officials",
         category=DataSourceCategory.A_UNRESTRICTED,
         is_implemented=False,
-        notes="Published as per-matchweek news articles on premierleague.com. Parser not yet "
-        "implemented in this slice.",
+        notes="Verified this session: pgmol.com resets the TCP connection from this sandbox "
+        "(network-level block, like betfair.com). premierleague.com itself is reachable but is "
+        "a client-rendered SPA (no article content in the raw HTML) -- would need a real "
+        "browser plus a dedicated ToS/risk audit of its internal API before use. See "
+        "DATA_SOURCES.md.",
     ),
     SourceDefinition(
         key="transfermarkt",
