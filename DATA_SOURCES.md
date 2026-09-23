@@ -1207,6 +1207,184 @@ Nessun provider Premier League aggiunto.
 
 ---
 
+## Categoria E — API commerciali di aggregazione quote (rivendita di terzi, non scraping)
+
+**Perché non è categoria D.** D (v. sopra) è la fonte *originale* stessa,
+usata tramite l'account personale dell'utente con quella fonte — Betfair è
+Betfair. Qui invece si tratta di un prodotto commerciale di terze parti che
+rivende/riaggrega i dati di ALTRE fonti (incluso Betfair Exchange stesso)
+come proprio business a pagamento, sotto propri termini commerciali — non
+c'è scraping da classificare per rischio ToS (a differenza di A/B/C), ma
+nemmeno è "la fonte stessa" (a differenza di D). Da qui la nuova categoria
+`E_COMMERCIAL_AGGREGATOR_API` in `app.models.enums.DataSourceCategory`
+(richiede la migrazione Alembic `47e8dcc15c1c`, stesso motivo di D: la
+colonna `category` di `sources` è un ENUM nativo Postgres).
+
+Richiesta esplicita dell'utente: valutare servizi API commerciali pensati
+per questo esatto caso d'uso (a differenza di diretta.it/livescore.com, siti
+consumer con ToS ostili allo scraping), verificando ciascuno con lo stesso
+rigore delle fonti precedenti ma sul rischio pratico (affidabilità,
+copertura, limiti) più che sul rischio ToS.
+
+### Tre candidati verificati dal vivo, uno solo utilizzabile
+
+**1. odds-api.io — SCARTATO, verificato dalla pagina prezzi reale
+(`odds-api.io/pricing/free`), non dal marketing.** Due problemi reali,
+diversi da quanto assunto inizialmente:
+- **Le nuove chiavi gratuite sono sospese a tempo indeterminato**: "New
+  free keys are paused indefinitely; existing free keys keep working under
+  the same limits." Senza una chiave già esistente da prima, oggi non è
+  possibile nemmeno registrarsi al piano gratuito.
+- **Il piano gratuito NON include Betfair Exchange**, contrariamente
+  all'assunzione iniziale: "Limited to 2 recreational bookmakers... Sharp
+  books, exchanges, and prediction markets require paid plans." Solo
+  bookmaker generici (Bet365/DraftKings/FanDuel), non l'exchange.
+  Nessuna carta di credito richiesta (confermato), ma questo non basta a
+  renderlo utilizzabile per questo progetto.
+
+**2. oddspapi.io — tecnicamente utilizzabile, ma limite pratico
+disqualificante, verificato con un calcolo reale (non stimato).** Email
+sola per la registrazione (nessuna carta, confermato dalla stringa
+`create_account` incorporata nella pagina reale), **tutti** i bookmaker
+inclusi (Betfair Exchange incluso — confermato dalla stessa fonte: "our
+free plan with ALL sports & bookmakers"), ma **250 richieste/mese**
+(verificato nell'HTML grezzo della pagina, non un titolo di blog).
+L'endpoint è per singola fixture (`GET /fixtures/{fixtureId}/odds`), non
+per intero campionato: aggiornare le 20 fixture reali di questo progetto
+costa ~20-24 richieste per singolo giro completo → **~10-11 aggiornamenti
+possibili al mese in totale**, non un "aggiornamento periodico" utilizzabile
+per un pulsante "AGGIORNA ANALISI" pensato per essere cliccato quando
+serve. Scartato per questo motivo pratico, non per ToS (i termini
+permettono esplicitamente questo uso, vietano solo la rivendita dei dati
+grezzi come prodotto a sé).
+
+**3. The Odds API (`the-odds-api.com`) — SCELTO, implementato.** V.
+dettaglio sotto. **Attenzione al nome**: esiste un prodotto diverso,
+`theoddsapi.com` (senza trattini), di un'altra azienda (footer: "© 2026
+TheOddsAPI · theoddsapi.com", contro "© 2026 The Odds API" del sito con
+trattino) — il suo piano gratuito è limitato a NBA/MLB `h2h`, nessun
+calcio, quindi irrilevante per questo progetto. Ogni affermazione sotto è
+verificata sul dominio **con trattino**, letta dalle sue pagine primarie
+(pricing, docs v4, termini), non da un riassunto di terzi (compresi i blog
+di oddspapi.io stesso, che confronta sé stesso ai concorrenti — trattati
+con lo scetticismo dovuto a un conflitto di interesse, mai come fonte
+primaria).
+
+### The Odds API — dettaglio
+
+**Piano gratuito "Starter", verificato dalla pagina prezzi reale**: $0/mese,
+**500 crediti/mese**, nessuna carta di credito, "all sports"/"all betting
+markets", "most bookmakers" (i piani a pagamento sbloccano "all
+bookmakers" — quali specificamente restano esclusi sul gratuito non è
+documentato da nessuna parte raggiunta in questa sessione).
+
+**Calcolo realistico dei limiti (richiesto esplicitamente, non stimato a
+occhio)**: il costo per chiamata è `mercati × regioni` crediti (es. 2
+mercati × 1 regione = 2 crediti). **Una singola chiamata restituisce le
+quote di OGNI fixture futura dell'intero campionato**, non per singola
+partita (`GET /v4/sports/{sport}/odds`, verificato: "Returns a list of
+upcoming and live games... for a given sport, region and market") — quindi
+aggiornare le 20 fixture reali (EPL+Serie A) costa **~4 crediti per giro
+completo** (2 campionati × 2 mercati × 1 regione), indipendentemente da
+quante partite ci sono davvero in quel momento. 500/4 ≈ **125 aggiornamenti
+completi al mese**, circa 4 al giorno — realisticamente utilizzabile per un
+pulsante "AGGIORNA ANALISI" cliccato quando serve, a differenza di
+oddspapi.io. Il provider aggiunge una cache di 10 minuti per campionato
+(`TheOddsApiOddsProvider._events_cache`) proprio per evitare che un batch di
+20 partite in una sola richiesta `analyze-batch` consumi 4 crediti per
+partita invece di 4 crediti totali.
+
+**Copertura EPL/Serie A**: chiavi di sport dedicate e documentate
+(`soccer_epl`, `soccer_italy_serie_a`), non un generico "soccer" da
+filtrare a mano. Mercati **1X2 (`h2h`, include il pareggio per il calcio) e
+Over/Under (`totals`)** confermati sulla stessa pagina, stesso costo in
+crediti indipendentemente dal mercato.
+
+**Betfair Exchange incluso**: `betfair_ex_uk`/`betfair_ex_eu`/`betfair_ex_au`
+compaiono nell'elenco bookmaker pubblico senza l'annotazione "Only available
+on paid subscriptions" che invece compare esplicitamente per altri
+bookmaker (es. Caesars, Fanatics) — indizio concreto (non una garanzia
+assoluta, la pagina non lo dichiara esplicitamente per ogni singolo
+bookmaker) che sia incluso anche sul piano gratuito. Il provider preferisce
+sempre Betfair Exchange quando presente nella risposta, poi Pinnacle
+(stessa preferenza già stabilita per il backtest, v. `BOOKMAKER_PREFERENCE`
+in `app/backtest/runner.py`), poi un paio di bookmaker generici di riserva —
+**mai confuso con una quota Betfair diretta**: `bookmaker_name` include
+sempre "via The Odds API (non diretto)" quando la fonte scelta è Betfair,
+o il nome del bookmaker effettivo altrimenti — non c'è mai un'etichetta
+generica "quota" che nasconda quale dei due canali (diretto vs relay) ha
+prodotto il numero, esattamente perché i due possono differire leggermente
+(tempi di cattura/cache diversi).
+
+**Bonus reale, non atteso: mercati corner/cartellini esistono**
+(`alternate_totals_corners`, `alternate_totals_cards`,
+`alternate_spreads_corners`, `alternate_spreads_cards`, `corners_1x2`),
+stesso costo in crediti dei mercati principali — qualcosa che Betfair
+Exchange non ha mai potuto confermare da questa sandbox (bloccata di rete).
+**Non implementato in questo giro**, perché la stessa documentazione
+ammette onestamente: "coverage of non-featured markets is currently limited
+to selected bookmakers and sports, and expanding over time" — collegarli
+alla cieca senza una risposta reale che confermi la copertura EPL/Serie A
+specifica sarebbe lo stesso errore di "fonte inventata" che questo progetto
+evita sistematicamente. Resta un passo successivo concreto, non un vicolo
+cieco.
+
+**Termini di servizio, letti direttamente (non riassunti da terzi)**:
+`the-odds-api.com/terms-and-conditions.html` permette esplicitamente
+"training statistical and machine learning models", "displaying our data in
+a UI... including for commercial use", "research papers and analytical
+dashboards" — esattamente il caso d'uso di questo progetto. Vieta solo
+rivendere/ridistribuire i dati grezzi "as a standalone data product", cosa
+che questo progetto non fa mai. Nessuna garanzia di accuratezza dei dati
+(clausola standard, come per ogni altra fonte quote di questo documento).
+
+**Non testato dal vivo in questa sessione — ma per un motivo diverso da
+Betfair.** `api.the-odds-api.com` è **raggiungibile da questa sandbox**
+(verificato: `GET /v4/sports/soccer_epl/odds?apiKey=chiave-non-valida`
+risponde `401` con un errore JSON pulito e ben formato — `{"message":"API
+key is not valid...", "error_code":"INVALID_KEY"}` — non un blocco di rete
+come per Betfair). Manca solo una chiave gratuita reale, che richiede una
+registrazione (verosimilmente con verifica email, come per
+`API_FOOTBALL_KEY`/`FOOTBALL_DATA_ORG_API_KEY` prima che l'utente le
+fornisse) — questa sessione non ha una casella email reale da usare. **A
+differenza di Betfair, una volta ottenuta la chiave questo provider può
+essere verificato dal vivo anche da questa stessa sandbox**, non solo dal
+computer dell'utente.
+
+**Istruzioni esatte per ottenere la chiave (passo dell'utente, non
+automatizzabile da qui)**:
+1. Vai su <https://the-odds-api.com/> (con il trattino — non
+   `theoddsapi.com`).
+2. Scorri alla sezione prezzi, scegli il piano **"Starter" (gratuito)**.
+3. Registrati con la tua email (nessuna carta di credito richiesta).
+4. La chiave API appare nella dashboard dopo la registrazione.
+5. Aggiungi `THE_ODDS_API_KEY=<la tua chiave>` a `backend/.env`.
+
+**Logica di richiesta/parsing della risposta testata** contro la forma JSON
+reale documentata su `the-odds-api.com/liveapi/guides/v4/` (letta
+direttamente da questa sessione, non assunta) — `httpx.MockTransport`,
+`tests/test_the_odds_api_provider.py`, non contro l'API live. Il matching
+nome-squadra è un confronto case-insensitive per sottostringa, non una
+mappa di alias verificata come `UNDERSTAT_TEAM_NAME_ALIASES` (nessuna
+risposta reale osservata in questa sessione da cui costruirne una) —
+segnalato esplicitamente nel docstring del provider come punto da rivedere
+con dati reali.
+
+**Stato nel codice**: `TheOddsApiOddsProvider`
+(`app/providers/the_odds_api/provider.py`), categoria
+`E_COMMERCIAL_AGGREGATOR_API`. Collegato a `build_default_odds_provider_chain`
+**dopo** Betfair Exchange, non prima: Betfair (una volta raggiungibile) non
+ha un tetto di richieste paragonabile, quindi provarlo per primo non costa
+nulla quando funziona e usa questa fonte a budget limitato solo quando
+Betfair davvero non è configurato/raggiungibile — l'ordine inverso
+brucerebbe crediti del piano gratuito a ogni chiamata anche quando la fonte
+ufficiale va bene, senza alcun beneficio. `THE_ODDS_API_KEY` letta da
+variabile d'ambiente tramite `app.config.Settings`, stesso standard già in
+uso — mai hardcoded. `is_available()` ritorna `False` senza chiave;
+l'assenza degrada correttamente, non fabbrica quote.
+
+---
+
 ## Riepilogo implementazione (anche in `app/ingestion/source_registry.py`)
 
 | Fonte | Categoria | Implementata | Note |
@@ -1234,4 +1412,7 @@ Nessun provider Premier League aggiunto.
 | Betson (via diretta.it, quote) | C | ❌ | Override utente esplicito accettato; bloccato da limite tecnico ambiente (browser headless) |
 | livescore.com (quote, backup) | C | ❌ | Auditata da zero; quote dietro widget affiliato gated, mai osservate dal vivo |
 | Betfair Exchange (quote ufficiali) | D | ✅ | API ufficiale via account personale, credenziali configurate — collegata al Decision Layer; non testata dal vivo da questa sessione (blocco di rete Cloudflare sull'IP sandbox, confermato funzionante da IP italiano — v. RUNNING_LOCALLY.md) |
+| The Odds API (the-odds-api.com, quote aggregate) | E | ✅ | Fallback dopo Betfair — 500 crediti/mese, ~125 aggiornamenti/mese realistici per 20 fixture; rete raggiungibile da qui, manca solo una chiave utente (registrazione email) |
+| odds-api.io (quote aggregate) | E | ❌ | Nuove chiavi gratuite sospese a tempo indeterminato; piano gratuito comunque esclude Betfair Exchange/sharp book |
+| oddspapi.io (quote aggregate) | E | ❌ | Tecnicamente utilizzabile (tutti i bookmaker, no carta) ma 250 richieste/mese, per-fixture non per-campionato → ~10-11 aggiornamenti/mese, non utilizzabile in pratica |
 | FantaLab (moduli/titolari/ballottaggi) | C | ❌ | **Accantonato per rischio autenticazione (Cognito), non per ToS** — utente ha rifiutato l'automazione del login Premium |

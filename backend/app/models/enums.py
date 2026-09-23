@@ -10,12 +10,25 @@ class DataSourceCategory(str, enum.Enum):
     is no scraping/ToS-interpretation risk to classify, the access itself is
     legitimate by design. Never assign this to a source that is actually being
     scraped just to avoid the A/B/C risk conversation.
+
+    `E_COMMERCIAL_AGGREGATOR_API` is different again from D: D is the
+    *original* source itself, accessed via the user's own account with that
+    source (Betfair is Betfair). E is a third-party commercial product that
+    resells/re-aggregates OTHER sources' data as its own paid API business
+    (e.g. The Odds API relaying Betfair Exchange + other bookmakers) — under
+    its own commercial ToS, which explicitly permits this project's exact use
+    case (personal analytical use, displaying in a UI, training statistical
+    models) and only prohibits reselling the raw data itself as a standalone
+    product. Not scraping (no ToS-interpretation risk like A/B/C), but also
+    not "the source itself" (unlike D) — hence its own category. See
+    DATA_SOURCES.md "Categoria E".
     """
 
     A_UNRESTRICTED = "A_UNRESTRICTED"
     B_PERSONAL_USE_ONLY = "B_PERSONAL_USE_ONLY"
     C_ABSTRACT_ONLY = "C_ABSTRACT_ONLY"
     D_OFFICIAL_API_PERSONAL_ACCOUNT = "D_OFFICIAL_API_PERSONAL_ACCOUNT"
+    E_COMMERCIAL_AGGREGATOR_API = "E_COMMERCIAL_AGGREGATOR_API"
 
 
 class MatchStatus(str, enum.Enum):

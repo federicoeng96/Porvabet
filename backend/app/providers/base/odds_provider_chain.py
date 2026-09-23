@@ -8,19 +8,32 @@ providers it holds, so it is fully testable with fake providers (see
 `tests/test_odds_provider_chain.py`) independently of which real providers
 are implemented.
 
-**Recommended priority, updated after Betfair Exchange was added**:
-`BetfairExchangeOddsProvider` first — it is the only source in this chain
-that is a real, working, officially-sanctioned API (category
-`D_OFFICIAL_API_PERSONAL_ACCOUNT`, no ToS/scraping risk at all), so it should
-be preferred whenever the user has configured Betfair credentials. Betson
-(via diretta.it) and livescore.com remain as documented fallbacks after it —
-both are still verified-blocked stubs (see DATA_SOURCES.md: Betson by this
-environment's headless-browser limitation, livescore.com by its gated
-affiliate-widget architecture), so today they contribute nothing at runtime,
-but the chain is ready to use either the moment one is completed, without
-any caller change. This module does not hardcode that composition (callers
-choose the exact provider list), but this is the ordering that should be
-used when wiring this into the live engine.
+**Recommended priority, updated after The Odds API was added**:
+1. `BetfairExchangeOddsProvider` — the official exchange itself, accessed via
+   the user's own account (category `D_OFFICIAL_API_PERSONAL_ACCOUNT`, no
+   ToS/scraping risk, no request-budget ceiling). Preferred whenever the user
+   has configured Betfair credentials and this environment's network can
+   reach Betfair (it could not from this sandbox — see DATA_SOURCES.md).
+2. `TheOddsApiOddsProvider` — a real, working, commercial aggregator
+   (category `E_COMMERCIAL_AGGREGATOR_API`, see DATA_SOURCES.md "Categoria
+   E") that relays Betfair Exchange and other bookmakers' prices through its
+   own free-tier API (500 credits/month). Kept explicitly AFTER Betfair, not
+   before: Betfair's own API has no comparable request ceiling once reachable,
+   so trying it first costs nothing extra on a good day and only falls
+   through to this scarcer-budget source when Betfair genuinely is not
+   configured/reachable — the reverse ordering would burn free-tier credits
+   on every single call even when the official source is fine, for no
+   benefit.
+3. Betson (via diretta.it) and livescore.com remain as documented fallbacks
+   after both — still verified-blocked stubs (see DATA_SOURCES.md: Betson by
+   this environment's headless-browser limitation, livescore.com by its
+   gated affiliate-widget architecture), so today they contribute nothing at
+   runtime, but the chain is ready to use either the moment one is
+   completed, without any caller change.
+
+This module does not hardcode that composition (callers choose the exact
+provider list), but this is the ordering that should be used when wiring
+this into the live engine.
 """
 
 import logging
@@ -33,19 +46,23 @@ logger = logging.getLogger(__name__)
 
 def build_default_odds_provider_chain() -> "FallbackOddsProvider":
     """The concrete provider composition this module's docstring recommends:
-    Betfair Exchange first (real, working, no ToS risk), then the two
-    documented-but-blocked stubs, kept in the chain so it starts contributing
-    the moment either is unblocked without any caller change. Imported here
-    (rather than at module import time) to avoid a hard import-time
-    dependency from this generic orchestrator module onto specific concrete
-    provider packages."""
+    Betfair Exchange first (the official source, no request-budget ceiling),
+    then The Odds API (a real, working commercial fallback with a scarce
+    free-tier budget — see module docstring for why it is not first), then
+    the two documented-but-blocked stubs, kept in the chain so it starts
+    contributing the moment either is unblocked without any caller change.
+    Imported here (rather than at module import time) to avoid a hard
+    import-time dependency from this generic orchestrator module onto
+    specific concrete provider packages."""
     from app.providers.betfair.provider import BetfairExchangeOddsProvider
     from app.providers.betson_diretta.provider import BetsonDirettaOddsProvider
     from app.providers.livescore.provider import LivescoreOddsProvider
+    from app.providers.the_odds_api.provider import TheOddsApiOddsProvider
 
     return FallbackOddsProvider(
         [
             BetfairExchangeOddsProvider(),
+            TheOddsApiOddsProvider(),
             # User-authorized ToS override, already accepted project-wide — see
             # DATA_SOURCES.md and this class' own module docstring. Still
             # `is_available() == False` today (verified technical blocker), so

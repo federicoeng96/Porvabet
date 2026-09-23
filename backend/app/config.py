@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     betfair_username: str | None = None
     betfair_password: str | None = None
 
+    # The Odds API (the-odds-api.com — category E, see DATA_SOURCES.md).
+    # Third-party commercial aggregator, free "Starter" plan (500 credits/
+    # month, no credit card). Used as a fallback behind Betfair Exchange in
+    # build_default_odds_provider_chain: same scarce free-tier budget is
+    # conserved by only hitting it when Betfair is unavailable. Absence means
+    # TheOddsApiOddsProvider.is_available() returns False.
+    the_odds_api_key: str | None = None
+
     cors_allow_origins: list[str] = ["http://localhost:3000"]
 
     env: str = "development"

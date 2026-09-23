@@ -289,4 +289,47 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         "live end-to-end verification must happen from an unblocked network (see "
         "RUNNING_LOCALLY.md). See DATA_SOURCES.md.",
     ),
+    SourceDefinition(
+        key="the_odds_api",
+        name="The Odds API (the-odds-api.com, commercial odds aggregator)",
+        category=DataSourceCategory.E_COMMERCIAL_AGGREGATOR_API,
+        is_implemented=True,
+        notes="Third-party commercial aggregator (relays Betfair Exchange + other "
+        "bookmakers), not scraped, own ToS explicitly permits this use case. Free "
+        "'Starter' plan: 500 credits/month, no credit card. One call returns odds "
+        "for every upcoming fixture of a whole sport/league (soccer_epl / "
+        "soccer_italy_serie_a), ~4 credits per full 20-fixture refresh -> ~125 "
+        "refreshes/month, realistic. Wired into build_default_odds_provider_chain "
+        "AFTER Betfair (scarce budget reserved as fallback). NOT the same company "
+        "as the similarly-named theoddsapi.com (different free tier, soccer not "
+        "included). This sandbox CAN reach api.the-odds-api.com (verified: clean "
+        "JSON 401 with an invalid key, not a network block) — only a free user key "
+        "is missing (requires email registration, see DATA_SOURCES.md). "
+        "Request/parsing logic unit-tested against the documented v4 JSON shape; "
+        "live end-to-end verification needs the user's own free key.",
+    ),
+    SourceDefinition(
+        key="odds_api_io",
+        name="odds-api.io (commercial odds aggregator)",
+        category=DataSourceCategory.E_COMMERCIAL_AGGREGATOR_API,
+        is_implemented=False,
+        notes="Evaluated and rejected: new free API keys are paused indefinitely "
+        "(verified on its own pricing page), and even an existing free key is "
+        "capped to 2 recreational bookmakers only — Betfair Exchange/sharp books/"
+        "exchanges explicitly require a paid plan. No credit card required, but "
+        "that alone does not make it usable for this project. See DATA_SOURCES.md.",
+    ),
+    SourceDefinition(
+        key="oddspapi_io",
+        name="oddspapi.io (commercial odds aggregator)",
+        category=DataSourceCategory.E_COMMERCIAL_AGGREGATOR_API,
+        is_implemented=False,
+        notes="Evaluated and rejected on a practical, not a ToS, ground: free tier is "
+        "email-only (no card) and includes ALL bookmakers (Betfair Exchange "
+        "included, verified from the page's own embedded copy), but capped at 250 "
+        "requests/month with a per-fixture (not per-league) endpoint — refreshing "
+        "20 real fixtures costs ~20-24 requests per full refresh, ~10-11 "
+        "refreshes/month total, not practically usable for a periodic-refresh UI "
+        "button. ToS itself permits this project's use case. See DATA_SOURCES.md.",
+    ),
 ]

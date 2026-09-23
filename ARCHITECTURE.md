@@ -58,15 +58,35 @@ risultato con credenziali finte e reali — confermato funzionante da un IP
 italiano dall'utente (v. DATA_SOURCES.md, RUNNING_LOCALLY.md). Questo è un
 limite di rete della sandbox, non del codice o delle credenziali.
 
-Conseguenza architetturale: finché `EPlay24OddsProvider`, `BetsonDirettaOddsProvider`
-e `LivescoreOddsProvider` restano interfacce senza implementazione funzionante,
-e `BetfairExchangeOddsProvider` resta collegato ma non verificato dal vivo
-(v. `app/providers/eplay24/`, `app/providers/betson_diretta/`,
-`app/providers/livescore/`, `app/providers/betfair/`), questo progetto è, di
-fatto, **un motore di stima (probabilità + quota fair), non ancora un motore
-di value betting verificato contro un book reale in tempo reale** — Betfair
-è la prima fonte di questo progetto per cui manca "solo" la verifica dal
-vivo (rete, non credenziali), non anche un blocco tecnico o ToS. Il "value" e
+**The Odds API aggiunge una seconda fonte quote reale e funzionante, questa
+volta raggiungibile da questa stessa sandbox** (v. DATA_SOURCES.md,
+categoria `E_COMMERCIAL_AGGREGATOR_API`): un aggregatore commerciale
+di terze parti (relay di Betfair Exchange + altri bookmaker), non la fonte
+ufficiale come Betfair — da qui la nuova categoria, distinta da D.
+`TheOddsApiOddsProvider` (`app/providers/the_odds_api/provider.py`) è
+collegato a `build_default_odds_provider_chain()` **dopo** Betfair (budget
+gratuito limitato a 500 crediti/mese, riservato come fallback — v.
+DATA_SOURCES.md per il calcolo completo). A differenza di Betfair,
+`api.the-odds-api.com` **non è bloccato dalla rete di questa sandbox**
+(verificato: risponde con un errore JSON pulito anche con una chiave non
+valida, non un blocco Cloudflare) — manca solo una chiave gratuita reale
+(richiede una registrazione con email propria, v. DATA_SOURCES.md per le
+istruzioni esatte), non una verifica dal computer dell'utente.
+
+Conseguenza architetturale, aggiornata: finché `EPlay24OddsProvider`,
+`BetsonDirettaOddsProvider` e `LivescoreOddsProvider` restano interfacce
+senza implementazione funzionante, e sia `BetfairExchangeOddsProvider` sia
+`TheOddsApiOddsProvider` restano collegati ma non verificati dal vivo per
+mancanza di credenziali/chiave (non per un blocco tecnico o ToS — v.
+`app/providers/eplay24/`, `app/providers/betson_diretta/`,
+`app/providers/livescore/`, `app/providers/betfair/`,
+`app/providers/the_odds_api/`), questo progetto è, di fatto, **un motore di
+stima (probabilità + quota fair), non ancora un motore di value betting
+verificato contro un book reale in tempo reale** — ma per la prima volta ha
+**due** fonti quote reali per cui manca "solo" una chiave/verifica dal vivo,
+non anche un blocco tecnico o ToS, e una delle due (The Odds API) è
+verificabile anche da questa stessa sandbox non appena esiste una chiave.
+Il "value" e
 gli alert mostrati oggi nell'interfaccia sono sempre calcolati contro le
 quote della fonte realmente disponibile (football-data.co.uk — quote reali di
 altri bookmaker, mai simulate), e sono **etichettati esplicitamente con il nome

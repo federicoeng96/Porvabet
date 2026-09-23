@@ -842,3 +842,57 @@ completi — è un indice.
   già esistente per "la pagina resta vuota dopo AGGIORNA ANALISI" estesa
   con questa causa (storico mancante) accanto a quella già documentata
   (chiave football-data.org).
+- **Nuova fonte quote: The Odds API (the-odds-api.com), categoria E
+  (nuova) — API commerciali di aggregazione quote**. Richiesta esplicita:
+  valutare servizi commerciali pensati per questo uso (a differenza di
+  diretta.it/livescore.com), stesso rigore di verifica delle fonti
+  precedenti ma sul rischio pratico, non ToS. Tre candidati verificati dal
+  vivo (pagine primarie, mai riassunti di blog di terzi):
+  - **odds-api.io — scartato**: nuove chiavi gratuite sospese a tempo
+    indeterminato (verificato sulla pagina prezzi reale), e il piano
+    gratuito comunque esclude Betfair Exchange/sharp book (solo 2
+    bookmaker generici) — contrario all'assunzione iniziale.
+  - **oddspapi.io — scartato per limite pratico**, non ToS: email sola,
+    tutti i bookmaker inclusi, ma 250 richieste/mese con endpoint per
+    singola fixture (non per campionato) → ~10-11 aggiornamenti/mese per
+    20 fixture reali, non utilizzabile per un pulsante "AGGIORNA ANALISI".
+  - **The Odds API (the-odds-api.com, con trattino) — scelto**. Da non
+    confondere con `theoddsapi.com` (azienda diversa, piano gratuito senza
+    calcio) — verificato con footer/branding distinti. 500 crediti/mese
+    gratis, nessuna carta; una singola chiamata restituisce le quote
+    dell'intero campionato (non per fixture) → ~4 crediti per un giro
+    completo EPL+Serie A → ~125 aggiornamenti/mese, calcolo reale non
+    stimato. Betfair Exchange incluso (`betfair_ex_uk`/`betfair_ex_eu`,
+    nessuna annotazione "solo a pagamento" a differenza di altri
+    bookmaker). Bonus reale non atteso: mercati corner/cartellini esistono
+    nell'API (mai implementati qui, copertura EPL/Serie A non verificabile
+    senza una chiave reale — lasciato come passo successivo onesto).
+    Termini letti direttamente: permettono esplicitamente "training
+    statistical and machine learning models"/"displaying... in a UI", solo
+    vietano la rivendita dei dati grezzi come prodotto a sé.
+  - Implementato `TheOddsApiOddsProvider`
+    (`app/providers/the_odds_api/provider.py`): preferenza
+    Betfair Exchange > Pinnacle > bookmaker generici tra quelli presenti
+    in risposta (stessa `BOOKMAKER_PREFERENCE` già in uso nel backtest),
+    ogni quota etichettata "via The Odds API (non diretto)" per non essere
+    mai confusa con una quota Betfair diretta. Cache di 10 minuti per
+    campionato per non consumare crediti una volta a partita durante un
+    batch `analyze-batch`. Collegato a `build_default_odds_provider_chain`
+    **dopo** Betfair (budget gratuito scarso riservato come fallback,
+    motivato nel docstring del modulo). Nuova categoria
+    `E_COMMERCIAL_AGGREGATOR_API` in `DataSourceCategory` (migrazione
+    Alembic `47e8dcc15c1c`), distinta da D (Betfair è la fonte originale
+    via account personale; questo è un rivenditore terzo commerciale).
+    `THE_ODDS_API_KEY` da variabile d'ambiente, stesso standard già in uso.
+  - **Non testato dal vivo, ma per un motivo diverso da Betfair**:
+    `api.the-odds-api.com` è raggiungibile da questa sandbox (verificato:
+    risposta JSON pulita 401 con chiave non valida, non un blocco di
+    rete) — manca solo una chiave utente reale (registrazione email).
+    Istruzioni esatte date all'utente in DATA_SOURCES.md/RUNNING_LOCALLY.md.
+    Logica di richiesta/parsing testata contro la forma JSON v4 reale
+    (documentazione letta direttamente), `httpx.MockTransport`, 8 nuovi
+    test (`tests/test_the_odds_api_provider.py`).
+  - DATA_SOURCES.md (nuova sezione "Categoria E" con tabella riepilogo),
+    ARCHITECTURE.md (aggiornata la sezione value-betting: ora due fonti
+    quote reali, non solo Betfair, una raggiungibile da questa sandbox).
+    264 test passano (256+8), lint pulito.

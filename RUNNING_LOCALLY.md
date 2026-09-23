@@ -92,7 +92,7 @@ generare errori — non serve "ripulire" nulla prima di rilanciarlo.
 
 ## Passo 2bis — Le tue chiavi (se non le hai ancora messe)
 
-Apri `backend\.env` con Blocco Note e compila queste due righe (le altre
+Apri `backend\.env` con Blocco Note e compila queste righe (le altre
 non toccarle):
 
 ```
@@ -100,12 +100,25 @@ BETFAIR_APP_KEY=<la tua Delayed Application Key>
 BETFAIR_USERNAME=<il tuo username Betfair>
 BETFAIR_PASSWORD=<la tua password Betfair>
 FOOTBALL_DATA_ORG_API_KEY=<la tua chiave gratuita football-data.org>
+THE_ODDS_API_KEY=<la tua chiave gratuita the-odds-api.com>
 ```
 
 Non hai ancora una chiave football-data.org? È gratuita e richiede un
 minuto: vai su <https://www.football-data.org>, clicca "Get started",
 registrati con la tua email (nessuna carta di credito richiesta), e trovi
 la chiave nella tua area account.
+
+Non hai ancora una chiave The Odds API? Anche questa è gratuita e richiede
+un minuto: vai su <https://the-odds-api.com/> (**con il trattino** — non
+`theoddsapi.com`, un prodotto diverso con un piano gratuito che non copre il
+calcio), scorri alla sezione prezzi, scegli il piano **"Starter"
+(gratuito)**, registrati con la tua email (nessuna carta di credito
+richiesta) e trovi la chiave nella dashboard. Serve solo come riserva:
+se Betfair è configurato e raggiungibile, Porvabet lo usa per primo e non
+tocca questa chiave; se Betfair non è ancora pronto (es. KYC in corso),
+questa fa da fallback con 500 richieste gratuite al mese (v. DATA_SOURCES.md
+per il dettaglio). Puoi anche lasciarla vuota per ora: senza, Porvabet
+prova solo Betfair e mostra "n/d" quando anche quello non ha una quota.
 
 **Non condividere mai questi valori** (chat, email, screenshot, commit) —
 restano solo in questo file sul tuo computer, che non viene mai caricato
