@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import AlertPopover from "./components/AlertPopover";
 import BetSlip, { type BetSlipItem } from "./components/BetSlip";
 import RiskPill from "./components/RiskPill";
-import { analyzeMatchesBatch, getMatchDetail, listMatchesAtRiskLevel } from "./lib/api";
+import { analyzeMatchesBatch, getMatchDetail, listFixtures, listMatchesAtRiskLevel } from "./lib/api";
 import type { MatchDetailOut } from "./lib/types";
 
 export default function HomePage() {
@@ -55,8 +55,15 @@ export default function HomePage() {
   async function handleRefreshAll() {
     setRefreshing(true);
     try {
+      // `matches` state comes from listMatchesAtRiskLevel (GET /matches?risk_level=N),
+      // which only returns matches that ALREADY have a current analysis — empty
+      // before the very first analysis ever runs, which made this button send
+      // analyze-batch an empty match_ids list and do nothing (see CHANGELOG.md).
+      // listFixtures() fetches the real, current fixture universe instead, so
+      // this works whether or not anything has been analyzed yet.
+      const fixtures = await listFixtures();
       // One batch request instead of N parallel /analyze calls (ROADMAP.md item 10).
-      await analyzeMatchesBatch(matches.map((m) => m.id));
+      await analyzeMatchesBatch(fixtures.map((f) => f.id));
       await loadAll();
     } finally {
       setRefreshing(false);

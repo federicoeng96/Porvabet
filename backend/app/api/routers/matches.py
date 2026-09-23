@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.engine.decision.analysis_runner import InsufficientDataError, run_analysis_for_match
 from app.engine.decision.count_market_estimates import NO_ODDS_NOTE
+from app.models.enums import MatchStatus
 from app.models.market import Market, MarketOutcome
 from app.models.match import Match
 from app.models.prediction import Alert, AnalysisVersion, Prediction, RiskSelection
@@ -158,6 +159,30 @@ def list_matches_at_risk_level(risk_level: int = 5, db: Session = Depends(get_db
             )
         )
     return rows
+
+
+@router.get("/fixtures", response_model=list[MatchSummaryOut])
+def list_fixtures(db: Session = Depends(get_db)):
+    """Every match that is not yet `FINISHED` (`SCHEDULED`/`IN_PLAY`) —
+    the actual universe of current fixtures this pre-match engine can
+    analyze, regardless of whether an analysis has ever been run for them.
+
+    This is what the frontend's "AGGIORNA ANALISI" button fetches to build
+    the `match_ids` it sends to `POST /matches/analyze-batch`. Deriving that
+    list from `GET /matches?risk_level=N` instead (the previous, buggy
+    behavior — see CHANGELOG.md) only returns matches that ALREADY have a
+    current `AnalysisVersion`, which is empty before the very first analysis
+    ever runs — so the button did nothing on a freshly ingested database.
+    Registered before `GET /{match_id}` so the literal path `/fixtures`
+    is matched first, not parsed as an (invalid) `match_id`.
+    """
+    matches = db.scalars(
+        select(Match).where(Match.status != MatchStatus.FINISHED).order_by(Match.kickoff_utc)
+    ).all()
+    current_analysis_match_ids = set(
+        db.scalars(select(AnalysisVersion.match_id).where(AnalysisVersion.is_current.is_(True))).all()
+    )
+    return [_match_summary(db, m, m.id in current_analysis_match_ids) for m in matches]
 
 
 @router.get("/{match_id}", response_model=MatchDetailOut)

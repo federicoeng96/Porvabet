@@ -781,3 +781,39 @@ completi — è un indice.
   su dati reali" per la tabella completa e il ragionamento esteso;
   MODEL_SPEC.md/ROADMAP.md aggiornati di conseguenza. 255 test passano,
   lint pulito.
+- **Bug reale trovato dall'utente durante il primo test in locale**: il
+  pulsante "AGGIORNA ANALISI" chiamava `POST /matches/analyze-batch` con
+  `match_ids: []` nonostante 20 fixture reali già ingerite (10 EPL + 10
+  Serie A). **Causa**: `handleRefreshAll` (`page.tsx`) costruiva
+  `match_ids` da `matches.map((m) => m.id)`, ma `matches` viene popolato
+  solo da `listMatchesAtRiskLevel`/`GET /matches?risk_level=N`, che
+  restituisce esclusivamente partite con un'`AnalysisVersion` **già
+  esistente** — vuoto per definizione prima della primissima analisi mai
+  eseguita, quindi il primo click su un database appena ingerito mandava
+  sempre una lista vuota. **Non un bug recente**: preesistente da quando
+  l'endpoint batch fu introdotto (ROADMAP.md item 10), mai notato prima
+  perché mai testato end-to-end con dati reali fino a questa sessione — con
+  dati sintetici lo scenario "fixture ingerite ma zero analisi mai
+  eseguita" non era mai stato l'ordine di operazioni provato. Il backend
+  era già corretto: `BatchAnalyzeRequest.match_ids: list[int] | None`
+  distingue correttamente `[]` esplicito (analizza quella lista, vuota) da
+  omesso/`None` (analizza tutto il DB, storico incluso — comportamento
+  testato e voluto, non toccato). **Corretto** aggiungendo
+  `GET /matches/fixtures` (`app/api/routers/matches.py`): ogni partita non
+  `FINISHED`, analizzata o no — l'universo reale di fixture che il
+  frontend deve passare ad `analyze-batch`, a differenza di
+  `GET /matches?risk_level=N` che presuppone un'analisi già esistente.
+  `handleRefreshAll` ora chiama questo endpoint prima di
+  `analyzeMatchesBatch`, non più lo stato locale `matches`. **Verificato
+  end-to-end contro il DB dev reale** (non solo con test): riprodotto per
+  primo il payload vuoto esatto del bug (`{"match_ids": []}` →
+  `{"total":0,...}`), poi confermato che con gli id reali da
+  `/matches/fixtures` l'analisi produce risultati veri (9 fixture, 8
+  riuscite, 1 `insufficient_data` per una squadra neopromossa senza
+  storico — atteso, non un errore) e che la tabella (`GET /matches?
+  risk_level=5`) mostra davvero le righe dopo. Aggiunto test di
+  regressione `test_fixtures_endpoint_lists_scheduled_matches_with_no_
+  analysis_yet` (`tests/test_matches_api.py`) che riproduce lo stato esatto
+  del bug (zero analisi in DB, fixture reali presenti) end-to-end via
+  `TestClient`, così non passa inosservato di nuovo. 256 test passano
+  (255+1), lint pulito, `tsc --noEmit` pulito lato frontend.

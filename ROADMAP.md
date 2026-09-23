@@ -523,6 +523,27 @@ interfacce, senza refactoring del pre-match.
   Verifica di rendering nel browser non eseguita (nessun Playwright/browser
   driver installato in questo repo) — verificato invece `tsc --noEmit` pulito
   e il contratto JSON confermato identico lato backend/frontend.
+  **Bug reale trovato dall'utente durante il primo test in locale, corretto
+  in una sessione successiva**: `handleRefreshAll` (`page.tsx`) costruiva
+  `match_ids` da `matches.map((m) => m.id)`, dove `matches` viene da
+  `listMatchesAtRiskLevel`/`GET /matches?risk_level=N` — che restituisce
+  solo partite con un'`AnalysisVersion` **già esistente**, vuoto prima della
+  primissima analisi mai eseguita. Cliccare "AGGIORNA ANALISI" su un
+  database appena ingerito (fixture reali presenti, nessuna analisi ancora
+  fatta) mandava quindi `{"match_ids": []}` e non analizzava nulla — il
+  backend distingue correttamente `[]` esplicito da `match_ids` omesso (v.
+  `BatchAnalyzeRequest`), quindi il bug era solo lato frontend. Corretto
+  aggiungendo `GET /matches/fixtures` (ogni partita non `FINISHED`, con o
+  senza analisi) e facendo chiamare quello a `handleRefreshAll` prima di
+  `analyzeMatchesBatch`, invece di riusare lo stato locale `matches`.
+  Verificato end-to-end contro il DB dev reale (non solo con test): stesso
+  payload vuoto riprodotto per primo (`{"total":0,...}`), poi confermato che
+  con gli id reali da `/matches/fixtures` l'analisi produce risultati veri
+  (9 fixture, 8 riuscite, 1 `insufficient_data` per una squadra neopromossa
+  senza storico — atteso, non un errore). Nuovo test di regressione
+  `test_fixtures_endpoint_lists_scheduled_matches_with_no_analysis_yet`
+  (`tests/test_matches_api.py`) riproduce lo stato esatto del bug (zero
+  analisi in DB) end-to-end via `TestClient`.
 - ⚠️ **Persistenza lato server della schedina — non implementata, ambiguità
   reale non risolvibile leggendo la documentazione esistente.** Valutato in
   questa sessione: la "schedina" oggi non è una lista che l'utente compone

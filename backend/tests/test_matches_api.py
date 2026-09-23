@@ -345,6 +345,87 @@ def test_get_match_detail_without_any_analysis_returns_empty_ladder(db_session):
     assert body["risk_levels"] == []
 
 
+def test_fixtures_endpoint_lists_scheduled_matches_with_no_analysis_yet(db_session, monkeypatch):
+    """Regression test for a real bug found by the user during local testing:
+    the frontend's "AGGIORNA ANALISI" button derived analyze-batch's
+    match_ids from `matches` state, which comes from listMatchesAtRiskLevel
+    (GET /matches?risk_level=N) — but that endpoint only returns matches
+    that ALREADY have a current AnalysisVersion, which is empty before the
+    very first analysis ever runs. So on a freshly ingested DB (real
+    fixtures present, zero analyses ever run), the button sent
+    `{"match_ids": []}` and analyzed nothing, even though real fixtures
+    existed (see CHANGELOG.md). GET /matches/fixtures — what the frontend
+    now calls instead — must return the fixture regardless of analysis
+    state, and feeding its ids into analyze-batch must actually analyze it.
+    """
+    import app.engine.decision.analysis_runner as analysis_runner_module
+    from app.ingestion.match_ingestion import (
+        get_or_create_competition,
+        get_or_create_season,
+        get_or_create_team,
+    )
+    from app.models.enums import MatchStatus
+    from app.models.match import Match
+
+    monkeypatch.setattr(
+        analysis_runner_module, "build_default_odds_provider_chain", lambda: _NoOpOddsProvider()
+    )
+
+    n_rounds = (MIN_TRAINING_MATCHES // 2) + 6
+    matches = _seed_matches(db_session, n_rounds=n_rounds)
+    last_kickoff = matches[-1].kickoff_utc
+
+    competition = get_or_create_competition(db_session, "EPL")
+    season = get_or_create_season(db_session, competition, "2024/2025")
+    home = get_or_create_team(db_session, "API A")
+    away = get_or_create_team(db_session, "API B")
+    upcoming = Match(
+        season_id=season.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_utc=last_kickoff + timedelta(days=7),
+        status=MatchStatus.SCHEDULED,
+        external_ref="api-synth:future:fixtures-endpoint",
+    )
+    db_session.add(upcoming)
+    db_session.flush()
+    db_session.commit()
+
+    client = _client(db_session)
+
+    # The old (buggy) source: zero current analyses exist anywhere yet, so
+    # this is legitimately empty — reproducing the exact state the button
+    # used to build its (also empty) match_ids from.
+    old_source = client.get("/matches?risk_level=1")
+    assert old_source.json() == []
+
+    # The fix: GET /matches/fixtures returns the fixture anyway.
+    fixtures_resp = client.get("/matches/fixtures")
+    assert fixtures_resp.status_code == 200
+    fixtures = fixtures_resp.json()
+    fixture_ids = {f["id"] for f in fixtures}
+    assert upcoming.id in fixture_ids
+    matching = next(f for f in fixtures if f["id"] == upcoming.id)
+    assert matching["status"] == "SCHEDULED"
+    assert matching["has_current_analysis"] is False
+    # The FINISHED historical matches seeded above (for model training) must
+    # never show up here — this endpoint is specifically the "current
+    # fixtures" universe, not "every match ever ingested".
+    assert all(f["status"] != "FINISHED" for f in fixtures)
+
+    # Feeding those ids into analyze-batch — exactly what the fixed frontend
+    # now does — must actually analyze the fixture, not no-op on an empty list.
+    batch_resp = client.post("/matches/analyze-batch", json={"match_ids": list(fixture_ids)})
+    assert batch_resp.status_code == 200
+    batch_body = batch_resp.json()
+    assert batch_body["total"] == 1
+    assert batch_body["succeeded"] == 1
+
+    # And the table now shows it too, closing the loop end-to-end.
+    after = client.get("/matches?risk_level=5")
+    assert any(row["id"] == upcoming.id for row in after.json())
+
+
 def test_analyze_match_single_endpoint_success(db_session, monkeypatch):
     """HTTP-level test of POST /matches/{id}/analyze — the odds provider chain
     is monkeypatched to a no-op stand-in so this never attempts a real Betfair
