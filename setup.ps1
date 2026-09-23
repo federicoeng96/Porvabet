@@ -211,6 +211,34 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Ok "Tabelle create/aggiornate."
 
+# --- 5bis. Storico multi-stagione (facoltativo ma consigliato) -----------
+Write-Step "Storico multi-stagione (facoltativo ma consigliato)"
+Write-Host "    Senza storico, il motore rifiuta di calcolare previsioni (servono almeno"
+Write-Host "    alcune decine di partite passate per stimare la forza delle squadre - il"
+Write-Host "    messaggio d'errore che vedresti e' proprio questo, non un bug)."
+Write-Host "    Scarica risultati, corner, cartellini, falli e quote di chiusura reali per"
+Write-Host "    Premier League e Serie A (10 stagioni, 2015/16-2024/25) da"
+Write-Host "    football-data.co.uk - non serve nessuna chiave/registrazione (fonte diversa"
+Write-Host "    da football-data.org usata per le partite future), richiede solo qualche"
+Write-Host "    minuto e una connessione internet. Sicuro da rilanciare piu' volte (non"
+Write-Host "    duplica le partite gia' presenti)."
+$histAnswer = Read-Host "    Scaricare lo storico ora? [S/n]"
+if ($histAnswer -eq "" -or $histAnswer -match "^[sS]") {
+    & $venvPython scripts\ingest_football_data.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Ingestione storico non completata del tutto - vedi i messaggi sopra."
+        Write-Host "    Puoi rilanciarla in qualunque momento con:"
+        Write-Host "    backend\.venv\Scripts\python.exe scripts\ingest_football_data.py"
+    } else {
+        Write-Ok "Storico multi-stagione scaricato."
+    }
+} else {
+    Write-Warn "Storico saltato - il motore non produrra' previsioni finche' non lo scarichi."
+    Write-Host "    Puoi farlo in qualunque momento (da dentro la cartella backend, con il"
+    Write-Host "    venv attivo) con:"
+    Write-Host "    .venv\Scripts\python.exe scripts\ingest_football_data.py"
+}
+
 # --- 6. Frontend ----------------------------------------------------------
 Write-Step "Preparazione frontend (Node.js)"
 Set-Location "$root\frontend"

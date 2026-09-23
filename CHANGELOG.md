@@ -817,3 +817,28 @@ completi — è un indice.
   del bug (zero analisi in DB, fixture reali presenti) end-to-end via
   `TestClient`, così non passa inosservato di nuovo. 256 test passano
   (255+1), lint pulito, `tsc --noEmit` pulito lato frontend.
+- **Ultimo tassello mancante nel setup locale, trovato dall'utente**: il DB
+  aveva le 20 fixture future (football-data.org) ma zero storico —
+  `scripts/ingest_football_data.py` (già esistente, mai chiamato da
+  `setup.ps1`/`setup.sh`) è lo script che in questa sandbox ha popolato le
+  ~3.800 partite/campionato usate per tutti i backtest del progetto:
+  default già `--competitions EPL SERIE_A --seasons 2015 2024`, nessun
+  argomento necessario. Comando immediato dato all'utente per sbloccarsi
+  subito, prima ancora di correggere gli script: `python
+  scripts/ingest_football_data.py` (venv attivo, dentro `backend`).
+  Aggiunto poi il passaggio a `setup.ps1`/`setup.sh`, dopo le migrazioni:
+  domanda interattiva "Scaricare lo storico ora? [S/n]" (default sì),
+  chiarendo che football-data.co.uk (questo passo) non richiede alcuna
+  chiave, a differenza di football-data.org (partite future). In
+  `setup.sh`, avvolto con il pattern `if comando; then ... else ... fi`
+  (non `set +e`/`set -e`) per restare esente da `set -e` — stessa classe di
+  bug già trovata e corretta due volte in questo file in sessioni
+  precedenti, verificata di nuovo qui con un test isolato dedicato prima di
+  committare (branch riuscita/fallita/saltata, tutte e tre raggiungono la
+  fine dello script). `setup.ps1` verificato con un vero parse AST
+  (`pwsh`), zero errori, zero caratteri non-ASCII introdotti (coerente con
+  il fix di encoding di una sessione precedente). `RUNNING_LOCALLY.md`
+  aggiornato: Passo 2 menziona il nuovo prompt, e l'entry "Problemi comuni"
+  già esistente per "la pagina resta vuota dopo AGGIORNA ANALISI" estesa
+  con questa causa (storico mancante) accanto a quella già documentata
+  (chiave football-data.org).

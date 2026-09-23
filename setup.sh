@@ -164,6 +164,33 @@ step "Applico le migrazioni del database (creazione tabelle)"
 .venv/bin/python -m alembic upgrade head
 ok "Tabelle create/aggiornate."
 
+# --- 5bis. Storico multi-stagione (facoltativo ma consigliato) ----------
+step "Storico multi-stagione (facoltativo ma consigliato)"
+echo "    Senza storico, il motore rifiuta di calcolare previsioni (servono almeno"
+echo "    alcune decine di partite passate per stimare la forza delle squadre - il"
+echo "    messaggio d'errore che vedresti e' proprio questo, non un bug)."
+echo "    Scarica risultati, corner, cartellini, falli e quote di chiusura reali per"
+echo "    Premier League e Serie A (10 stagioni, 2015/16-2024/25) da"
+echo "    football-data.co.uk - non serve nessuna chiave/registrazione (fonte diversa"
+echo "    da football-data.org usata per le partite future), richiede solo qualche"
+echo "    minuto e una connessione internet. Sicuro da rilanciare piu' volte (non"
+echo "    duplica le partite gia' presenti)."
+read -rp "    Scaricare lo storico ora? [S/n] " HIST_ANSWER
+if [[ -z "$HIST_ANSWER" || "$HIST_ANSWER" =~ ^[sS] ]]; then
+    if .venv/bin/python scripts/ingest_football_data.py; then
+        ok "Storico multi-stagione scaricato."
+    else
+        warn "Ingestione storico non completata del tutto - vedi i messaggi sopra."
+        echo "    Puoi rilanciarla in qualunque momento con:"
+        echo "    backend/.venv/bin/python scripts/ingest_football_data.py"
+    fi
+else
+    warn "Storico saltato - il motore non produrra' previsioni finche' non lo scarichi."
+    echo "    Puoi farlo in qualunque momento (da dentro la cartella backend, con il"
+    echo "    venv attivo) con:"
+    echo "    .venv/bin/python scripts/ingest_football_data.py"
+fi
+
 # --- 6. Frontend ----------------------------------------------------------
 step "Preparazione frontend (Node.js)"
 cd "$ROOT/frontend"

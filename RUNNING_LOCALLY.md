@@ -69,6 +69,16 @@ procedere, per essere sicuro di avere l'ultima versione degli script
    compilare con le tue chiavi Betfair/football-data.org — se non le hai
    ancora, lascia il file com'è e chiudilo, potrai completarlo più tardi
    (vedi sotto).
+6. Verso la fine, lo script chiede: **"Scaricare lo storico ora? [S/n]"** —
+   rispondi con **Invio** (o `S`) per scaricare automaticamente ~10 stagioni
+   di partite passate (Premier League + Serie A, risultati/corner/
+   cartellini/falli/quote di chiusura) da football-data.co.uk. **Questo
+   passaggio è necessario**: senza storico il motore statistico rifiuta di
+   calcolare previsioni (serve un minimo di partite passate per stimare la
+   forza delle squadre) — non serve nessuna chiave per questo passo (fonte
+   diversa da football-data.org, usata invece per le partite future). Ci
+   vogliono un paio di minuti; puoi anche saltarlo e farlo più tardi (te lo
+   ripete lo script stesso, con il comando esatto da copiare).
 
 Se qualcosa va storto, lo script stampa in rosso cosa non ha funzionato e
 cosa fare — leggi con calma il messaggio prima di richiedere aiuto, spesso
@@ -122,7 +132,9 @@ La prima volta la tabella potrebbe apparire vuota o con poche righe: clicca
 il pulsante **"AGGIORNA ANALISI"** in alto per far calcolare le analisi
 sulle partite appena scaricate (con Betfair configurato, questa volta le
 quote reali dovrebbero comparire invece di "n/d" — è proprio questo il
-test che stai facendo).
+test che stai facendo). Se non hai ancora scaricato lo storico
+multi-stagione (Passo 2, punto 6), "AGGIORNA ANALISI" non produrrà
+risultati — vedi "Problemi comuni" più sotto.
 
 Per chiudere tutto: chiudi semplicemente le due finestre PowerShell aperte
 da `start.ps1`.
@@ -191,11 +203,21 @@ l'installazione.
 
 **La pagina nel browser resta vuota anche dopo "AGGIORNA ANALISI"** —
 apri la finestra del backend (quella con i log): se mostra un errore in
-rosso, quello spiega cosa non ha funzionato (es. chiave football-data.org
-non valida — l'errore lo nomina esplicitamente). Se non mostra errori ma la
-tabella resta vuota, probabilmente non ci sono ancora partite scaricate:
-verifica che `FOOTBALL_DATA_ORG_API_KEY` sia compilata in `backend\.env` e
-rilancia `.\start.ps1`.
+rosso, quello spiega cosa non ha funzionato. Due cause comuni:
+1. **Errore che parla di partite passate/storico insufficiente
+   ("need >= N matches", o simile)** — hai saltato il passo dello storico
+   multi-stagione durante `setup.ps1` (Passo 2, punto 6): senza quello, il
+   motore rifiuta correttamente di calcolare previsioni (serve un minimo di
+   partite passate per stimare la forza delle squadre — non è un bug).
+   Risolvi con, dalla cartella `backend` e con il venv attivo:
+   ```powershell
+   .venv\Scripts\python.exe scripts\ingest_football_data.py
+   ```
+   poi torna nel browser e clicca di nuovo "AGGIORNA ANALISI".
+2. **Chiave football-data.org non valida, o nessuna partita futura
+   scaricata** (l'errore lo nomina esplicitamente, es. "chiave non
+   valida") — verifica che `FOOTBALL_DATA_ORG_API_KEY` sia compilata in
+   `backend\.env` e rilancia `.\start.ps1`.
 
 **Ho chiuso per sbaglio una finestra, e ora?** — nessun danno: rilancia
 `.\start.ps1`, riapre solo quello che manca (non tocca ciò che è già
